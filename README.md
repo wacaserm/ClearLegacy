@@ -38,8 +38,47 @@ Keep the terminal running while using the app. To stop it, press **Ctrl+C**.
 2. Review or edit the beneficiary record.
 3. Click **Analyze records**.
 
-The starter version displays a placeholder message.
-AI analysis will work after the Amazon Bedrock integration is connected.
+The app sends the two summaries to Amazon Bedrock and displays the extracted,
+source-grounded facts. Full reconciliation remains dependent on the validation,
+rules, and explanation modules.
+
+## Role 3: AWS and integration
+
+The integration layer is responsible for document reading, JSON runtime storage,
+Bedrock extraction wiring, and pipeline integration. The current prototype uses
+fictional sample data and does not provision AWS resources.
+
+### macOS/Linux setup
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Configure the workshop AWS credentials in the same terminal used to start the
+app. Temporary credentials require all three values:
+
+```bash
+export AWS_ACCESS_KEY_ID="..."
+export AWS_SECRET_ACCESS_KEY="..."
+export AWS_SESSION_TOKEN="..."
+export AWS_REGION="us-east-1"
+```
+
+Verify the session before starting Streamlit:
+
+```bash
+aws sts get-caller-identity --region us-east-1
+python -m streamlit run app.py
+```
+
+The Bedrock adapter uses `amazon.nova-micro-v1:0` by default. An enabled model
+or inference profile can be selected with `BEDROCK_MODEL_ID`. Never commit AWS
+credentials, `.env` files, `.aws/`, or Streamlit secrets.
+
+If STS or Bedrock reports an invalid security token, refresh the temporary
+workshop credentials and restart Streamlit from the same terminal.
 
 ## Project guide
 
