@@ -33,6 +33,14 @@ def esc(value) -> str:
     return html.escape("" if value is None else str(value), quote=True)
 
 
+def quote_text(value) -> str:
+    """Collapse line breaks and runs of spaces from extracted document text, then escape.
+
+    Raw PDF text can contain blank lines that Markdown would turn into separate paragraphs.
+    """
+    return esc(" ".join(str(value or "").split()))
+
+
 def render(markup: str) -> None:
     st.markdown(markup, unsafe_allow_html=True)
 

@@ -4,7 +4,7 @@ import streamlit as st
 
 from ui.html import (
     PRIORITY_ORDER, esc, format_percentage, humanize_field, parse_record_value,
-    priority_key, priority_pill, render,
+    priority_key, priority_pill, quote_text, render,
 )
 from ui.review import decision_label, render_finding_actions
 
@@ -22,7 +22,7 @@ def _document_block(item, names):
     source = item.get("filename") or names.get(item.get("sourceId")) or "Document"
     location = item.get("location") or "location not supplied"
     quote = item.get("quote") or item.get("value") or "Quote not supplied."
-    return (f'<div class="cl-quote" role="note">{esc(quote)}</div>'
+    return (f'<div class="cl-quote" role="note">{quote_text(quote)}</div>'
             f'<p class="cl-source">{esc(source)} · {esc(location)}</p>')
 
 
@@ -49,7 +49,7 @@ def _record_rows(value):
 def _account_block(item):
     if item.get("quote"):  # fixture samples quote the account snapshot instead of a field
         source = item.get("filename") or item.get("sourceId") or "Account record"
-        return (f'<div class="cl-quote" role="note">{esc(item["quote"])}</div>'
+        return (f'<div class="cl-quote" role="note">{quote_text(item["quote"])}</div>'
                 f'<p class="cl-source">{esc(source)} · {esc(item.get("location") or "supplied record")}</p>')
     field = humanize_field(item.get("field"))
     source = item.get("sourceId") or "Account record"
@@ -156,7 +156,7 @@ def render_findings(client_id, analysis, workspace, sample=False):
 
     if analysis.get("summary"):
         render('<div class="cl-card quiet"><p class="cl-label">Case summary</p>'
-               f'<p style="font-size:14px;line-height:1.6">{esc(analysis["summary"])}</p>'
+               f'<p style="font-size:14px;line-height:1.6">{quote_text(analysis["summary"])}</p>'
                '<p class="cl-small" style="margin-top:8px">AI-generated from the findings below. Review the evidence before acting.</p></div>')
 
     for warning in analysis.get("warnings", []) or []:
@@ -178,13 +178,13 @@ def render_findings(client_id, analysis, workspace, sample=False):
                 label, tone = decision_label(decision.get("decision"))
                 head += f' <span class="cl-pill {esc(tone)} plain">{esc(label)}</span>'
             render(f'<div class="cl-finding-head">{head}</div>'
-                   f'<p class="cl-finding-title">{esc(finding.get("title", "Finding"))}</p>')
-            render(f'<p class="cl-finding-body" style="margin-top:8px">{esc(finding.get("explanation", "No explanation was provided."))}</p>')
+                   f'<p class="cl-finding-title">{quote_text(finding.get("title", "Finding"))}</p>')
+            render(f'<p class="cl-finding-body" style="margin-top:8px">{quote_text(finding.get("explanation", "No explanation was provided."))}</p>')
             if finding.get("recommendedAction"):
-                render(f'<div class="cl-kv"><p class="cl-label">Recommended action</p>{esc(finding["recommendedAction"])}</div>')
+                render(f'<div class="cl-kv"><p class="cl-label">Recommended action</p>{quote_text(finding["recommendedAction"])}</div>')
             follow_up = finding.get("followUpQuestion") or finding.get("clarificationQuestion")
             if follow_up:
-                render(f'<div class="cl-kv"><p class="cl-label">Follow-up question</p>{esc(follow_up)}</div>')
+                render(f'<div class="cl-kv"><p class="cl-label">Follow-up question</p>{quote_text(follow_up)}</div>')
 
             evidence = finding.get("evidence", [])
             render(ledger_html(evidence if isinstance(evidence, list) else [], names))
@@ -197,7 +197,7 @@ def render_findings(client_id, analysis, workspace, sample=False):
                     parts.insert(0, reviewer)
                 if note:
                     parts.append(f"Note: {note}")
-                render(f'<p class="cl-small">{esc(" · ".join(p for p in parts if p))}</p>')
+                render(f'<p class="cl-small">{quote_text(" · ".join(p for p in parts if p))}</p>')
                 with st.expander("Change decision"):
                     event = render_finding_actions(client_id, analysis_id, finding_id, decision.get("decision"), sample) or event
             else:

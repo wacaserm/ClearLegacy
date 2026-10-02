@@ -109,3 +109,11 @@ def test_review_history_table_and_masking_note(monkeypatch):
                 "reviewer": "Advisor", "timestamp": "2026-10-02T20:00", "persistence": "Session-only"}]
     html = _html(_run(history=history))
     assert "Flagged for attorney review" in html and "PII masking is on" in html
+
+
+def test_quotes_with_line_breaks_render_as_one_block():
+    from ui.findings import ledger_html
+    html = ledger_html([{"sourceType": "document", "sourceId": "s", "location": "page 1",
+                         "quote": "The\nresiduary\n\nbeneficiary   is\n\nCasey"},
+                        {"sourceType": "account", "sourceId": "A", "field": "state", "value": "GA"}])
+    assert "The residuary beneficiary is Casey" in html and "\n" not in html.split('role="note">')[1].split("</div>")[0]

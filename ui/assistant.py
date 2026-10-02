@@ -2,7 +2,7 @@ import streamlit as st
 
 from services import gui_adapter
 from ui import compat
-from ui.html import esc, humanize_field, render
+from ui.html import esc, humanize_field, quote_text, render
 
 LOGO = "ui/assets/clear-legacy-logo.png"
 USER_AVATAR = ":material/person:"
@@ -31,7 +31,7 @@ def _citations_html(citations, names):
     for item in citations:
         if item.get("sourceType") == "document":
             source = item.get("filename") or names.get(item.get("sourceId")) or item.get("sourceId", "Document")
-            rows.append(f'<div class="cl-quote" role="note">{esc(item.get("quote", ""))}</div>'
+            rows.append(f'<div class="cl-quote" role="note">{quote_text(item.get("quote", ""))}</div>'
                         f'<p class="cl-source">{esc(source)} · {esc(item.get("location", ""))}</p>')
         else:
             rows.append(f'<p class="cl-source"><b>{esc(item.get("sourceId", "Account"))}</b> · '

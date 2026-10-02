@@ -2,7 +2,7 @@ import streamlit as st
 
 from core import config
 from ui import compat
-from ui.html import esc, render
+from ui.html import esc, quote_text, render
 
 DECISIONS = (
     ("Confirm", "confirmed"),
@@ -98,7 +98,7 @@ def render_history(local_history, persistent_history, persistence_error=None):
             "<tr>"
             f'<td class="num">{esc(r["timestamp"][:16].replace("T", " "))}</td>'
             f'<td><span class="cl-pill {esc(r["tone"])}">{esc(r["decision"])}</span></td>'
-            f'<td>{esc(r["note"]) or "<span class=sub style=display:inline>No note</span>"}</td>'
+            f'<td>{quote_text(r["note"]) or "<span class=sub style=display:inline>No note</span>"}</td>'
             f'<td>{esc(r["reviewer"])}</td>'
             f'<td>{esc(r["persistence"])}<span class="sub">{esc(r["finding"][:28])}</span></td>'
             "</tr>"
