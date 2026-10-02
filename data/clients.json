@@ -1,0 +1,152 @@
+{
+  "clients": [
+    {
+      "clientId": "morgan",
+      "name": "Jordan Morgan",
+      "currentSpouse": "Casey Morgan",
+      "formerSpouse": "Taylor Morgan",
+      "accounts": [
+        {
+          "accountId": "DEMO-MORGAN-IRA",
+          "accountType": "IRA",
+          "sourceId": "MORGAN-ACCOUNT-SNAPSHOT-2026-09-28",
+          "snapshotDate": "2026-09-28",
+          "designationUpdatedDate": "2020-06-15",
+          "primaryBeneficiaries": [
+            {
+              "name": "Taylor Morgan",
+              "relationship": "former spouse",
+              "percentage": 100
+            }
+          ],
+          "contingentBeneficiaries": [],
+          "contingentDataStatus": "none_listed_in_snapshot",
+          "sourceQuote": "Account DEMO-MORGAN-IRA: Primary beneficiary is Taylor Morgan, former spouse, 100%. Designation last updated 2020-06-15. No contingent beneficiaries are listed in this supplied snapshot."
+        },
+        {
+          "accountId": "DEMO-MORGAN-BROKERAGE",
+          "accountType": "brokerage",
+          "designationType": "TOD",
+          "sourceId": "MORGAN-ACCOUNT-SNAPSHOT-2026-09-28",
+          "snapshotDate": "2026-09-28",
+          "designationUpdatedDate": "2026-09-26",
+          "primaryBeneficiaries": [
+            {
+              "name": "Avery Morgan",
+              "relationship": "child",
+              "percentage": 50
+            },
+            {
+              "name": "Riley Morgan",
+              "relationship": "child",
+              "percentage": 50
+            }
+          ],
+          "contingentBeneficiaries": null,
+          "contingentDataStatus": "not_supplied",
+          "sourceQuote": "Account DEMO-MORGAN-BROKERAGE: Primary transfer-on-death beneficiaries are Avery Morgan, child, 50%, and Riley Morgan, child, 50%. Designation last updated 2026-09-26."
+        }
+      ]
+    },
+    {
+      "clientId": "patel",
+      "name": "Sam Patel",
+      "currentSpouse": "Lee Patel",
+      "accounts": [
+        {
+          "accountId": "DEMO-PATEL-IRA",
+          "accountType": "IRA",
+          "sourceId": "PATEL-ACCOUNT-SNAPSHOT-2026-09-28",
+          "snapshotDate": "2026-09-28",
+          "designationUpdatedDate": "2026-09-21",
+          "primaryBeneficiaries": [
+            {
+              "name": "Lee Patel",
+              "relationship": "spouse",
+              "percentage": 100
+            }
+          ],
+          "contingentBeneficiaries": [
+            {
+              "name": "Alex Patel",
+              "relationship": "child",
+              "percentage": 50
+            },
+            {
+              "name": "Jamie Patel",
+              "relationship": "child",
+              "percentage": 50
+            }
+          ],
+          "contingentDataStatus": "supplied",
+          "sourceQuote": "Account DEMO-PATEL-IRA: Primary beneficiary Lee Patel, spouse, 100%. Contingent beneficiaries Alex Patel, child, 50%, and Jamie Patel, child, 50%. Designation last updated 2026-09-21."
+        },
+        {
+          "accountId": "DEMO-PATEL-BROKERAGE",
+          "accountType": "brokerage",
+          "designationType": "TOD",
+          "sourceId": "PATEL-ACCOUNT-SNAPSHOT-2026-09-28",
+          "snapshotDate": "2026-09-28",
+          "designationUpdatedDate": "2026-09-21",
+          "primaryBeneficiaries": [
+            {
+              "name": "Alex Patel",
+              "relationship": "child",
+              "percentage": 50
+            },
+            {
+              "name": "Jamie Patel",
+              "relationship": "child",
+              "percentage": 50
+            }
+          ],
+          "contingentBeneficiaries": null,
+          "contingentDataStatus": "not_supplied",
+          "sourceQuote": "Account DEMO-PATEL-BROKERAGE: Primary transfer-on-death beneficiaries Alex Patel, child, 50%, and Jamie Patel, child, 50%. Designation last updated 2026-09-21."
+        }
+      ]
+    },
+    {
+      "clientId": "rivera",
+      "name": "Robin Rivera",
+      "currentSpouse": "Quinn Rivera",
+      "accounts": [
+        {
+          "accountId": "DEMO-RIVERA-IRA",
+          "accountType": "IRA",
+          "sourceId": "RIVERA-OLD-ACCOUNT-SNAPSHOT-2025-11-01",
+          "snapshotDate": "2025-11-01",
+          "designationUpdatedDate": "2025-10-15",
+          "primaryBeneficiaries": [
+            {
+              "name": "Quinn Rivera",
+              "relationship": "spouse",
+              "percentage": 100
+            }
+          ],
+          "contingentBeneficiaries": [
+            {
+              "name": "Drew Rivera",
+              "relationship": "child",
+              "percentage": 100
+            }
+          ],
+          "contingentDataStatus": "supplied",
+          "sourceQuote": "Account DEMO-RIVERA-IRA: Primary beneficiary Quinn Rivera, spouse, 100%. Contingent beneficiary Drew Rivera, child, 100%. Designation last updated 2025-10-15.",
+          "recordNotes": "This snapshot predates the client's reported possible summer 2026 update and is not a current account confirmation."
+        },
+        {
+          "accountId": "DEMO-RIVERA-BROKERAGE",
+          "accountType": "brokerage",
+          "sourceId": "RIVERA-OLD-ACCOUNT-SNAPSHOT-2025-11-01",
+          "snapshotDate": "2025-11-01",
+          "designationUpdatedDate": null,
+          "primaryBeneficiaries": null,
+          "contingentBeneficiaries": null,
+          "contingentDataStatus": "not_supplied",
+          "sourceQuote": "Account DEMO-RIVERA-BROKERAGE: No beneficiary data was included in this export. This is missing data, not confirmation that no designation exists."
+        }
+      ]
+    }
+  ]
+}

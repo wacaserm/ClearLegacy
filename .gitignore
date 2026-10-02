@@ -227,3 +227,8 @@ __marimo__/
 # Local AWS credentials and uploaded documents
 .aws/
 uploads/
+
+# Local scratch and environment
+test_aws.py
+.venv/
+
