@@ -1,0 +1,18 @@
+=== PAGE 1 ===
+Revocable Trust Summary
+ClearLegacy fictional demonstration household
+FICTIONAL DEMO RECORD - NOT REAL CLIENT DATA
+Document ID: JOHNSON-TRUST-2021
+
+Trust name: The Robert J. Johnson Revocable Living Trust, dated June 2, 2021.
+
+Trustees: "Robert J. Johnson shall serve as the initial Trustee. Upon the death, resignation, or incapacity of Robert J. Johnson, his daughter Emily Johnson shall serve as successor trustee."
+
+Trust property: "Brokerage account DEMO-JOHNSON-4471 shall be held by and titled in the name of the Trust."
+
+=== PAGE 2 ===
+Distribution: "Upon the death of the Settlor, the Trustee shall distribute the remaining trust estate in equal shares to the Settlor's children, Emily Johnson, David Johnson and Sarah Johnson."
+
+Governing law: "The validity and construction of this trust shall be determined under the laws of the State of California."
+
+This is a fictional summary for demonstration. It is not a legal document and has not been reviewed by an attorney.

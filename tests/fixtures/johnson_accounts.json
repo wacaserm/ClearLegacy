@@ -1,0 +1,42 @@
+{
+  "client": {
+    "clientId": "DEMO-JOHNSON",
+    "name": "Robert Johnson",
+    "age": 74,
+    "state": "VA",
+    "spouse": "Carol Johnson",
+    "profileNotes": ["Thomas Johnson deceased, March 2025"],
+    "trustedContact": {"name": "Thomas Johnson", "relationship": "brother"},
+    "snapshotDate": "2026-09-28"
+  },
+  "accounts": [
+    {
+      "accountId": "DEMO-JOHNSON-4471",
+      "type": "Brokerage",
+      "registration": "Individual Robert Johnson",
+      "owners": ["Robert Johnson"],
+      "todBeneficiaries": [
+        {"name": "Linda Johnson", "relationship": "former spouse", "tier": "primary", "allocation": "100%", "recordedDate": "2009-05-11"}
+      ],
+      "value": 1200000
+    },
+    {
+      "accountId": "DEMO-JOHNSON-8820",
+      "type": "IRA",
+      "registration": "Traditional IRA",
+      "owners": ["Robert Johnson"],
+      "beneficiaries": [
+        {"name": "Carol Johnson", "relationship": "spouse", "tier": "primary", "allocation": "100%"}
+      ],
+      "value": 640000
+    },
+    {
+      "accountId": "DEMO-JOHNSON-3302",
+      "type": "Joint",
+      "registration": "Joint with Carol Johnson",
+      "owners": ["Robert Johnson", "Carol Johnson"],
+      "beneficiaries": [],
+      "value": 85000
+    }
+  ]
+}
