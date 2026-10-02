@@ -122,6 +122,11 @@ def supported_upload_types(backend=None):
     file_types = ["pdf", "docx"]
     if "csv" in normalized:
         file_types.append("csv")
+    # Image uploads are OCR-only, so offer them only when the reader supports them and Textract is on.
+    from core import config
+
+    if config.use_textract():
+        file_types.extend(ext for ext in ("png", "jpg", "jpeg", "tif", "tiff") if ext in normalized)
     return file_types
 
 
