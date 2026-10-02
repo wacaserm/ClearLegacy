@@ -37,7 +37,11 @@ def _validated_facts(validation: Any) -> tuple[dict[str, Any] | None, list[str]]
 	warnings = warnings if isinstance(warnings, list) else [str(warnings)]
 	if validation.get("valid") is False or validation.get("is_valid") is False:
 		return None, [str(warning) for warning in warnings] or ["Fact validation failed."]
-	facts = validation.get("facts", validation.get("validatedFacts", validation))
+	# validate_facts returns the facts dict itself, whose "facts" key is the list of facts.
+	if isinstance(validation.get("facts"), list):
+		facts = validation
+	else:
+		facts = validation.get("facts", validation.get("validatedFacts", validation))
 	if not isinstance(facts, dict):
 		return None, [str(warning) for warning in warnings] + ["Fact validation returned no usable facts."]
 	return facts, [str(warning) for warning in warnings]

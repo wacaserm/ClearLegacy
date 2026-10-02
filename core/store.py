@@ -51,6 +51,9 @@ def _client_records() -> list[dict[str, Any]]:
 			f"{ACCOUNTS_FILE} or nested in clients.json. Existing sample_data contains documents only."
 		)
 	records = _load_json(CLIENTS_FILE)
+	if isinstance(records, dict):
+		# data/clients.json (Role 2) wraps the list as {"clients": [...]}.
+		records = records.get("clients", [])
 	if not isinstance(records, list):
 		raise StoreDataMissing(f"Client records must be a JSON list: {CLIENTS_FILE}")
 	return records
