@@ -55,6 +55,8 @@ def _fixture_households():
         if len(parts) != 2:
             continue
         slug = parts[1].split("_", maxsplit=1)[0].lower()
+        if any(item["clientId"] == slug for item in households):
+            continue  # e.g. 01_morgan_discrepancies and 04_morgan_estate are one household
         households.append({"clientId": slug, "name": FIXTURE_LABELS.get(slug, f"{slug.title()} household")})
     return households
 

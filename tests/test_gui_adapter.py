@@ -83,3 +83,8 @@ def test_analyze_keeps_read_text_for_qa():
     result = adapter.analyze_documents("morgan", UPLOADS, _backend(lambda c, d: {"status": "review_needed", "findings": []}),
                                        [dict(PREVIEWS[0], sections=[{"location": "page 1", "text": "hi"}])])
     assert result["documents"][0]["sections"] == [{"location": "page 1", "text": "hi"}]
+
+
+def test_fixture_households_are_unique():
+    ids = [h["clientId"] for h in adapter._fixture_households()]
+    assert len(ids) == len(set(ids))  # 01_morgan_* and 04_morgan_* are one household
