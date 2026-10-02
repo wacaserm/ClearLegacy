@@ -73,11 +73,97 @@ needs more information.
 If analysis fails, the app shows why: missing or expired credentials, or a
 model that isn't enabled (set `CLEARLEGACY_MODEL_ID` to change it).
 
+## Run with AWS services
+
+The steps above run in **local mode**: Bedrock for AI, local JSON files for
+storage. That is the default and needs nothing else. To turn on the other AWS
+services, do this once per AWS account:
+
+```bash
+python infra/setup_aws.py      # encrypted private S3 bucket + 4 on-demand DynamoDB tables (safe to rerun)
+python infra/seed_dynamodb.py  # load data/clients.json into DynamoDB
+```
+
+Then set the flags (in the same terminal as your credentials) and start the app:
+
+```powershell
+$env:CLEARLEGACY_STORAGE="dynamodb"
+$env:CLEARLEGACY_USE_S3="1"
+$env:CLEARLEGACY_USE_TEXTRACT="1"
+$env:CLEARLEGACY_PII_MASKING="1"
+$env:CLEARLEGACY_BUCKET="clearlegacy-<account-id>-us-east-1"   # printed by setup_aws.py
+python scripts/check_setup.py
+python -m streamlit run app.py
+```
+
+On macOS or Linux use `export NAME="value"`. The app header shows which backends
+are active, plus a "PII masking on" badge.
+
+**Any AWS error falls back to local behavior with a visible warning; it never
+crashes.** That covers expired credentials, a missing table or bucket, and a
+denied call.
+
+### Feature flags
+
+| Variable | Values (default first) | Effect |
+|---|---|---|
+| `CLEARLEGACY_STORAGE` | `json` / `dynamodb` | Where clients, accounts, findings, decisions and the audit log are stored. DynamoDB uses the same functions and return shapes as JSON, and the audit log is append-only (conditional writes). |
+| `CLEARLEGACY_USE_S3` | `0` / `1` | Also store each upload at `s3://<bucket>/clients/<clientId>/<filename>` (SSE-S3). Processing is unchanged. |
+| `CLEARLEGACY_USE_TEXTRACT` | `1` / `0` | OCR **only** pages with no text layer. Single pages and images use synchronous Textract; multi-page scans go through S3 with the async API (60-second timeout). Also enables PNG/JPG uploads. |
+| `CLEARLEGACY_PII_MASKING` | `0` / `1` | Amazon Comprehend masks SSNs, bank and card numbers, phone numbers and emails in what is **stored or logged** (findings, decision notes, audit log, log messages). It does not mask what the AI reads or what the advisor sees. If Comprehend fails, a local pattern mask is used instead. |
+| `CLEARLEGACY_BUCKET` | (none) | S3 bucket for uploads and multi-page OCR |
+| `CLEARLEGACY_TABLE_PREFIX` | `clearlegacy-` | DynamoDB table name prefix |
+
+### Optional: analysis API on AWS Lambda
+
+```bash
+python infra/deploy_lambda.py    # least-privilege role + function + Function URL (IAM auth)
+python infra/invoke_lambda.py morgan sample_data/01_morgan_discrepancies/planning_summary.pdf sample_data/01_morgan_discrepancies/account_records.pdf
+```
+
+The URL rejects unsigned requests; `invoke_lambda.py` signs with your
+credentials. It uses a Function URL rather than API Gateway because HTTP APIs
+time out at 30 seconds and an analysis takes about 25 seconds.
+
+### Cost and cleanup
+
+Everything is pay-per-use (on-demand DynamoDB, S3, Textract, Comprehend, Lambda);
+nothing runs while idle. Each analysis returns `usage` with Bedrock tokens and an
+estimated cost (prices in `core/bedrock_client.py`, marked to verify against AWS
+Bedrock pricing).
+
+To remove everything:
+
+```bash
+python infra/deploy_lambda.py --teardown
+python infra/setup_aws.py --teardown
+```
+
+Both ask for confirmation first.
+
+### AWS services actually used
+
+Only services verified live on Oct 2, 2026, in the workshop account (us-east-1):
+
+| Service | What ClearLegacy uses it for | How it was verified |
+|---|---|---|
+| **Amazon Bedrock** (Claude Sonnet 5, Claude Haiku 4.5) | Fact extraction, explanations, case summary, advisor Q&A (Converse API with tool use) | Morgan, Patel and Rivera all gave the expected results in both modes |
+| **Amazon Textract** | OCR for scanned pages (sync for single pages, S3 + async for multi-page) | A scanned Morgan planning summary still gave both expected findings; a 2-page scan was read through the async API with the temporary file deleted |
+| **Amazon S3** | Encrypted (SSE-S3), private, versioned storage of uploaded documents | Uploads stored under `clients/<clientId>/` with `ServerSideEncryption: AES256`; public access block and versioning confirmed |
+| **Amazon DynamoDB** (on-demand) | Clients, accounts, findings, decisions, append-only audit log | Records identical to the JSON store; an attempt to overwrite an audit entry was refused by DynamoDB |
+| **Amazon Comprehend** | PII masking of stored notes, findings and logs | A stored decision note was saved with `[PHONE]`, `[SSN]`, `[EMAIL]` in place of the values; names and account IDs were kept |
+| **AWS Lambda** (Function URL, IAM auth) | Runs the full analysis pipeline as a private API | A signed request returned the correct Morgan and Patel results; an unsigned request got HTTP 403 |
+| **AWS IAM / STS** | Least-privilege Lambda role; temporary workshop credentials | Role created by `deploy_lambda.py`; identity checked by `check_setup.py` |
+
+Not used: API Gateway (30-second limit), Step Functions, and any always-on
+services.
+
 ## Role 3: AWS and integration
 
 The integration layer is responsible for document reading, JSON runtime storage,
-Bedrock extraction wiring, and pipeline integration. The current prototype uses
-fictional sample data and does not provision AWS resources.
+Bedrock extraction wiring, and pipeline integration. The prototype uses
+fictional sample data. Optional AWS resources (S3, DynamoDB, Lambda) are created
+only when you run the `infra/` scripts; see "Run with AWS services" above.
 
 ### macOS/Linux setup
 

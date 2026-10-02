@@ -175,3 +175,16 @@ def test_assistant_gives_up_after_one_retry(monkeypatch):
     monkeypatch.setattr(assistant_mod, "call_tool", lambda **kw: calls.append(1) or {"answer": "Uncited claim.", "citations": []})
     out = assistant_mod.answer_question("Who?", FACTS, CLIENT, [])
     assert len(calls) == 2 and out["answer"] == assistant_mod.UNSUPPORTED_ANSWER
+
+
+def test_usage_is_recorded_and_priced(monkeypatch):
+    resp = {"stopReason": "tool_use", "usage": {"inputTokens": 1_000_000, "outputTokens": 100_000},
+            "output": {"message": {"content": [{"toolUse": {"name": "t", "input": {"ok": True}}}]}}}
+    monkeypatch.setattr(bc, "get_client", lambda service="bedrock-runtime": _FakeClient(resp))
+    before = bc.usage_snapshot()
+    bc.call_tool("s", "u", "t", "d", {"type": "object"}, model_id="us.anthropic.claude-sonnet-5")
+    bc.call_tool("s", "u", "t", "d", {"type": "object"}, model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0")
+    usage = bc.usage_since(before)
+    assert usage["models"]["us.anthropic.claude-sonnet-5"] == {"calls": 1, "inputTokens": 1_000_000,
+                                                               "outputTokens": 100_000, "estimatedCostUSD": 3.0}
+    assert usage["estimatedCostUSD"] == 3.0 + 1.5  # Sonnet 2+1, Haiku 1+0.5
