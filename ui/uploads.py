@@ -8,7 +8,7 @@ def render_uploads(client_id, backend):
     planning_column, account_column = st.columns(2)
     with planning_column:
         with st.container(border=True):
-            st.markdown("**Planning documents**")
+            st.markdown("**1. Planning documents**")
             planning_files = st.file_uploader(
                 "Upload planning documents",
                 type=file_types,
@@ -17,7 +17,7 @@ def render_uploads(client_id, backend):
             )
     with account_column:
         with st.container(border=True):
-            st.markdown("**Account records**")
+            st.markdown("**2. Account records**")
             account_files = st.file_uploader(
                 "Upload account records",
                 type=file_types,

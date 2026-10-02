@@ -16,12 +16,9 @@ STATUS_LABELS = {
 
 def render_household(client, status):
     name = client.get("name") or client.get("clientName") or "Household"
-    title, badge = st.columns([4, 1], vertical_alignment="center")
-    with title:
-        st.title(name)
-    with badge:
-        label, color = STATUS_LABELS.get(status, ("Not analyzed", "gray"))
-        compat.badge(label, color=color)
+    st.title(name)
+    label, color = STATUS_LABELS.get(status, ("Not analyzed", "gray"))
+    st.badge(label, color=color)
 
 
 def render_account_details(accounts):

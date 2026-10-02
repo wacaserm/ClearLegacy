@@ -11,8 +11,15 @@ def render_analysis_state(status, error, client_id, sample_available):
     if status == "not_analyzed":
         st.info("Upload planning documents and account records, then run an analysis to review evidence.")
         if sample_available:
+        with st.container(border=True):
+            st.markdown("### Preview the demo")
+            st.caption(
+                "Loads fictional sample results for demonstration. "
+            )
             return st.button(
-                "Load clearly labeled fixture sample",
+                "Load demo sample",
+                type="primary",
+                width="stretch",
                 key=f"load_sample_{client_id}",
             )
     elif status == "processing":
