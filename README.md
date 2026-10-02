@@ -2,7 +2,17 @@
 
 ## Running ClearLegacy
 
-Open a PowerShell terminal in the ClearLegacy repository folder.
+Open a terminal (PowerShell on Windows) in the ClearLegacy repository folder and
+get the latest code:
+
+```powershell
+git checkout main
+git pull origin main
+```
+
+macOS/Linux users: activate with `source .venv/bin/activate`, and set variables
+with `export NAME="value"` instead of `$env:NAME="value"`. You can also paste the
+credentials block for your OS straight from the workshop page.
 
 ### 1. Activate your virtual environment
 
@@ -67,8 +77,17 @@ Keep the terminal running while using the app. To stop it, press **Ctrl+C**.
 5. Use the **Ask ClearLegacy** tab for follow-up questions. Answers cite their
    sources and are read-only.
 
-Expected results: Morgan has 2 findings, Patel has no discrepancies, and Rivera
-needs more information.
+Expected results:
+
+| Household | Upload | Expected result |
+|---|---|---|
+| Jordan Morgan | `01_morgan_discrepancies`: planning summary + account records | 2 findings: IRA primary beneficiary mismatch, and missing contingent beneficiaries |
+| Jordan Morgan (estate) | `04_morgan_estate`: will, trust, and POA summaries as planning documents, plus `01_morgan_discrepancies/account_records.pdf` as the account record | 4 findings: brokerage TOD differs from the will, brokerage not titled to the trust, deceased POA agent (Pat Morgan), and will governed by FL while the client lives in GA |
+| Sam Patel | `02_patel_consistent` | No discrepancies |
+| Robin Rivera | `03_rivera_ambiguous` | Needs more information (clarifying questions) |
+
+To show OCR, upload `tests/fixtures/scanned/morgan_planning_summary_scanned.pdf`
+(an image-only scan) as Morgan's planning summary. The results are the same.
 
 If analysis fails, the app shows why: missing or expired credentials, or a
 model that isn't enabled (set `CLEARLEGACY_MODEL_ID` to change it).
@@ -98,6 +117,11 @@ python -m streamlit run app.py
 
 On macOS or Linux use `export NAME="value"`. The app header shows which backends
 are active, plus a "PII masking on" badge.
+
+**Each workshop AWS account needs its own resources.** The bucket, tables, and
+Lambda are created inside whichever account your credentials belong to. If
+`check_setup.py` says the bucket or tables are missing, run the two `infra/`
+commands above once in your account. Local mode works in any account.
 
 **Any AWS error falls back to local behavior with a visible warning; it never
 crashes.** That covers expired credentials, a missing table or bucket, and a
