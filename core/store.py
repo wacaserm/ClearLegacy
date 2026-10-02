@@ -214,12 +214,28 @@ def _check_inputs(name: str, args: tuple, kwargs: dict) -> None:
 			raise ValueError("note must be a string.")
 
 
+def _masked_write_args(name: str, args: tuple, kwargs: dict) -> tuple[tuple, dict]:
+	"""Mask PII in what gets stored (findings text, decision notes); IDs are kept."""
+	from .pii import mask_value
+
+	names = ["client_id", "analysis_id", "findings"] if name == "save_findings" else [
+		"client_id", "analysis_id", "finding_id", "decision", "user", "note"]
+	values = dict(zip(names, args), **kwargs)
+	if name == "save_findings":
+		values["findings"] = mask_value(values["findings"])
+	else:
+		values["note"] = mask_value(values["note"])
+	return (), values
+
+
 def _select_backend(name: str):
 	json_function = _JSON_FUNCTIONS[name]
 
 	def dispatch(*args, **kwargs):
 		from . import config
 
+		if name in {"save_findings", "log_decision"} and config.pii_masking():
+			args, kwargs = _masked_write_args(name, args, kwargs)
 		if config.storage() == "dynamodb":
 			_check_inputs(name, args, kwargs)
 			from . import store_dynamodb

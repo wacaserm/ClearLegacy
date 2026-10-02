@@ -24,6 +24,7 @@ from ui.state import (
 )
 from ui.theme import apply_theme
 from ui.uploads import render_analyze_button, render_uploads
+from ui.aws_status import render_aws_status
 
 
 st.set_page_config(page_title="ClearLegacy | Advisor Review", layout="wide")
@@ -41,6 +42,8 @@ if not households:
     st.info("No client records or fictional household fixtures are available in this checkout.")
     st.caption("The store contract is core.store.get_clients().")
     st.stop()
+
+render_aws_status()
 
 household_ids = [item["clientId"] for item in households]
 state = initialize_state(household_ids)
