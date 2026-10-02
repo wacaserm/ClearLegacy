@@ -122,6 +122,11 @@ def supported_upload_types(backend=None):
     file_types = ["pdf", "docx"]
     if "csv" in normalized:
         file_types.append("csv")
+    # Image uploads are OCR-only, so offer them only when the reader supports them and Textract is on.
+    from core import config
+
+    if config.use_textract():
+        file_types.extend(ext for ext in ("png", "jpg", "jpeg", "tif", "tiff") if ext in normalized)
     return file_types
 
 
@@ -197,14 +202,22 @@ def _label_sources(result, previews):
         result[key] = messages
 
 
-def summarize(client, findings):
-    """Return a short AI case summary, or None. Called once after a live analysis."""
+def summarize(client, findings, result=None):
+    """Return a short AI case summary, or None. Called once after a live analysis.
+
+    If the analysis result is passed, the summary's Bedrock usage is added to it.
+    """
     if not findings:
         return None
     try:
+        from core.bedrock_client import merge_usage, usage_since, usage_snapshot
         from core.explain import summarize_case
 
-        return summarize_case(client, findings).get("summary")
+        before = usage_snapshot()
+        summary = summarize_case(client, findings).get("summary")
+        if isinstance(result, dict):
+            result["usage"] = merge_usage(result.get("usage"), usage_since(before))
+        return summary
     except Exception:
         return None
 
