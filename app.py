@@ -1,3 +1,5 @@
+import time
+
 import streamlit as st
 
 from services import gui_adapter
@@ -24,26 +26,47 @@ from ui.state import (
 )
 from ui.theme import apply_theme
 from ui.uploads import render_analyze_button, render_uploads
-from ui.aws_status import render_aws_status
+from ui.aws_status import render_aws_warnings
+from ui.html import esc, render
 
 
-st.set_page_config(page_title="ClearLegacy | Advisor Review", layout="wide")
+st.set_page_config(
+    page_title="ClearLegacy · Advisor Review",
+    page_icon="ui/assets/clear-legacy-logo.png",
+    layout="wide",
+    initial_sidebar_state="expanded",
+)
 apply_theme()
+
+STEP_LABELS = {
+    "reading": "Reading documents",
+    "ocr": "Running OCR on scanned pages",
+    "extracting": "Extracting facts",
+    "checking": "Checking quotes against the documents",
+    "comparing": "Comparing to account records",
+    "explaining": "Writing explanations",
+    "summary": "Writing the case summary",
+}
+
+
+def _steps_html(done, current, detail):
+    items = [f'<li class="done">✓ {esc(STEP_LABELS[step])}</li>' for step in done if step != current]
+    if current:
+        items.append(f'<li class="now">{esc(STEP_LABELS[current])}'
+                     + (f' <span class="cl-small">· {esc(detail)}</span>' if detail else "") + "</li>")
+    return '<ul class="cl-steps">' + "".join(items) + "</ul>"
 
 backend = gui_adapter.backend_status()
 try:
     households = gui_adapter.get_households(backend)
 except Exception as error:
     households = gui_adapter._fixture_households()
-    st.warning(f"Stored client records are unavailable; using fictional fixture households: {error}")
+    render(f'<div class="cl-notice warn">Stored client records are unavailable; using fictional fixture households. {esc(error)}</div>')
 
 if not households:
-    st.title("ClearLegacy")
-    st.info("No client records or fictional household fixtures are available in this checkout.")
-    st.caption("The store contract is core.store.get_clients().")
+    render('<h1 class="cl-title">ClearLegacy</h1>'
+           '<div class="cl-notice">No client records or fictional household fixtures are available in this checkout.</div>')
     st.stop()
-
-render_aws_status()
 
 household_ids = [item["clientId"] for item in households]
 state = initialize_state(household_ids)
@@ -51,6 +74,7 @@ selected_client_id = render_sidebar(
     households,
     state["selected_client_id"],
     backend,
+    {cid: workspace["status"] for cid, workspace in state["workspaces"].items()},
 )
 if selected_client_id is None:
     st.stop()
@@ -63,16 +87,17 @@ except Exception as error:
     client = {"clientId": selected_client_id, "name": next(
         item["name"] for item in households if item["clientId"] == selected_client_id
     )}
-    st.warning(f"Client profile could not be loaded: {error}")
+    render(f'<div class="cl-notice warn">Client profile could not be loaded: {esc(error)}</div>')
 try:
     accounts = gui_adapter.get_accounts(selected_client_id, backend)
 except Exception as error:
     accounts = []
-    st.warning(f"Account records could not be loaded: {error}")
+    render(f'<div class="cl-notice warn">Account records could not be loaded: {esc(error)}</div>')
 
 header_slot = st.empty()
-st.subheader("Documents")
-documents, previews, extraction_errors = render_uploads(selected_client_id, backend)
+render_account_details(accounts)
+render('<div style="height:24px"></div>')
+documents, previews, extraction_errors, documents_card = render_uploads(selected_client_id, backend)
 upload_fingerprint = fingerprint_documents(documents)
 had_analysis = bool(workspace["current_analysis_id"])
 uploads_changed = sync_uploads(selected_client_id, upload_fingerprint)
@@ -81,26 +106,42 @@ if uploads_changed and had_analysis:
 
 workspace = get_workspace(selected_client_id)
 with header_slot.container():
-    render_household(client, workspace["status"])
+    render_household(client, workspace["status"], accounts)
+render_aws_warnings()
 notice = pop_notice(selected_client_id)
 if notice:
-    if notice.startswith("Error:"):
-        st.error(notice)
-    else:
-        st.success(notice)
+    tone = "error" if notice.startswith("Error:") else "ok"
+    render(f'<div class="cl-notice {tone}">{esc(notice.removeprefix("Error: "))}</div>')
 
-analyze_clicked = render_analyze_button(
-    selected_client_id,
-    documents,
-    extraction_errors,
-    backend,
-    workspace["processing"],
-)
+with documents_card:
+    analyze_clicked = render_analyze_button(
+        selected_client_id,
+        documents,
+        extraction_errors,
+        backend,
+        workspace["processing"],
+    )
+    progress_box = st.empty()
 if analyze_clicked:
     begin_analysis(selected_client_id)
+    started = time.monotonic()
     try:
-        with st.spinner("Running the configured ClearLegacy analysis pipeline…"):
-            result = gui_adapter.analyze_documents(selected_client_id, documents, backend, previews)
+        with progress_box.container(), st.status("Analyzing documents…", expanded=True) as status_box:
+            steps_slot = st.empty()
+            done_steps = []
+
+            def on_progress(step, detail=None):
+                if step not in STEP_LABELS:
+                    return
+                if step not in done_steps:
+                    done_steps.append(step)
+                steps_slot.markdown(_steps_html(done_steps, step, detail), unsafe_allow_html=True)
+
+            result = gui_adapter.analyze_documents(selected_client_id, documents, backend, previews, progress=on_progress)
+            if isinstance(result, dict) and result.get("findings"):
+                on_progress("summary")
+                result["summary"] = gui_adapter.summarize(client, result["findings"], result)
+            status_box.update(label="Analysis complete", state="complete", expanded=False)
         if not isinstance(result, dict):
             raise ValueError("The analysis pipeline returned an unsupported response.")
         allowed_statuses = {
@@ -123,9 +164,7 @@ if analyze_clicked:
             result.setdefault("clarificationQuestions", [])
             result.setdefault("warnings", [])
             result.setdefault("analysisId", None)
-            if result["findings"]:
-                with st.spinner("Writing a short case summary…"):
-                    result["summary"] = gui_adapter.summarize(client, result["findings"], result)
+            result["elapsedSeconds"] = time.monotonic() - started
             complete_analysis(
                 selected_client_id,
                 result,
@@ -136,8 +175,7 @@ if analyze_clicked:
         fail_analysis(selected_client_id, f"Analysis failed: {error}")
     st.rerun()
 
-render_account_details(accounts)
-
+render('<div style="height:16px"></div>')
 findings_tab, ask_tab, history_tab = st.tabs(["Findings", "Ask ClearLegacy", "Review history"])
 review_event = None
 with findings_tab:
@@ -155,7 +193,7 @@ with findings_tab:
                 load_sample_analysis(selected_client_id, sample_result)
                 st.rerun()
             except Exception as error:
-                st.error(f"Fixture sample could not be loaded: {error}")
+                render(f'<div class="cl-notice error">Sample results could not be loaded: {esc(error)}</div>')
     else:
         source = workspace["analyses"][workspace["current_analysis_id"]]["source"]
         review_event = render_findings(
@@ -214,4 +252,5 @@ if review_event:
         )
     st.rerun()
 
-st.caption("Findings support advisor review and are not legal advice.")
+render('<p class="cl-small" style="margin-top:32px">Findings support advisor review and are not legal advice. '
+       "Attorney review is an internal flag; nothing is sent externally.</p>")

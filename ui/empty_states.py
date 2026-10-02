@@ -1,33 +1,33 @@
-import streamlit as st
+from ui import compat
+from ui.html import esc, render
+
+
+def _card(title, body, tone=""):
+    render(f'<div class="cl-card quiet {esc(tone)}"><p class="cl-section">{esc(title)}</p>'
+           f'<p class="cl-muted">{esc(body)}</p></div>')
 
 
 def render_analysis_state(status, error, client_id, sample_available):
+    """Empty, processing, failed, and outdated states. Returns True if the sample should load."""
     if status == "failed":
-        st.error(error or "Analysis failed. No findings are available for this run.")
+        render('<div class="cl-notice error"><b>Analysis failed.</b> '
+               f'{esc(error or "No findings are available for this run.")}</div>')
+        render('<p class="cl-small">Check your AWS credentials with <code>python scripts/check_setup.py</code>, '
+               "then click Analyze again.</p>")
         return False
     if status == "outdated":
-        st.warning("Selected documents changed. Reanalyze before using prior results.")
+        _card("Results are out of date",
+              "The selected documents changed after the last analysis. Click Analyze to review the current files.")
+        return False
+    if status == "processing":
+        _card("Analysis in progress", "Reading documents and comparing them with the account records…")
         return False
     if status == "not_analyzed":
-        st.info("Upload planning documents and account records, then run an analysis to review evidence.")
+        _card("No analysis yet",
+              "Add the client's planning documents and account records above, then click Analyze. "
+              "Each finding will show the document quote next to the account record it conflicts with.")
         if sample_available:
-            with st.container(border=True):
-                st.markdown("### Preview the demo")
-                st.caption(
-                    "Loads fictional sample results for demonstration. "
-                )
-                return st.button(
-                    "Load demo sample",
-                    type="primary",
-                    width="stretch",
-                    key=f"load_sample_{client_id}",
-                )
-    elif status == "processing":
-        st.info("Analysis is in progress.")
-    elif status == "needs_information":
-        st.warning("More information is needed. Review the questions and warnings below.")
-    elif status == "no_discrepancies_found":
-        st.success("No discrepancies found within the supplied scope.")
-    elif status == "review_needed":
-        st.info("Review the findings and record a follow-up decision.")
+            render('<p class="cl-small" style="margin-top:12px">The analysis pipeline is not connected in this '
+                   "checkout. You can preview the review flow with fictional sample results.</p>")
+            return compat.button("Load sample results", key=f"load_sample_{client_id}")
     return False
