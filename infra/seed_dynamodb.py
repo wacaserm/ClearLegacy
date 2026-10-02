@@ -31,12 +31,16 @@ def main() -> None:
     clients_table = dynamodb.Table(config.table_name("clients"))
     accounts_table = dynamodb.Table(config.table_name("accounts"))
 
-    for client in clients:
+    # "_meta" keeps file order and notes keys added for DynamoDB, so the store
+    # can return records shaped exactly like data/clients.json.
+    for index, client in enumerate(clients):
         record = {k: v for k, v in client.items() if k != "accounts"}
+        record["_meta"] = {"order": index, "hasAccounts": "accounts" in client}
         clients_table.put_item(Item=to_dynamo(record))
         with accounts_table.batch_writer() as batch:
-            for account in client.get("accounts", []):
-                batch.put_item(Item=to_dynamo({**account, "clientId": client["clientId"]}))
+            for position, account in enumerate(client.get("accounts", [])):
+                meta = {"order": position, "addedClientId": "clientId" not in account}
+                batch.put_item(Item=to_dynamo({**account, "clientId": client["clientId"], "_meta": meta}))
         print(f"seeded {client['clientId']}: {len(client.get('accounts', []))} account(s)")
 
 
