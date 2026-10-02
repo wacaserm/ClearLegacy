@@ -148,7 +148,12 @@ def preview_documents(documents, backend=None):
     return previews, errors
 
 
-def analyze_documents(client_id, documents, backend=None):
+def analyze_documents(client_id, documents, backend=None, previews=None):
+    """Run core.pipeline.analyze once, on the raw uploads, and label sources by filename.
+
+    The pipeline treats dict inputs as already-read documents, so uploads are
+    passed as (file_bytes, filename) pairs for it to read.
+    """
     backend = backend or backend_status()
     pipeline = backend["pipeline"]
     analyze = getattr(pipeline, "analyze", None) if pipeline else None
@@ -156,7 +161,68 @@ def analyze_documents(client_id, documents, backend=None):
         raise BackendUnavailableError(
             "Analysis is unavailable because core.pipeline.analyze(client_id, documents) is not configured."
         )
-    return analyze(client_id, documents)
+    result = analyze(client_id, [(document["file_bytes"], document["filename"]) for document in documents])
+    if isinstance(result, dict):
+        _label_sources(result, previews or [])
+    return result
+
+
+def _label_sources(result, previews):
+    """Add filenames to evidence and replace opaque source IDs in messages."""
+    names = {
+        preview.get("sourceId"): preview.get("filename")
+        for preview in previews
+        if preview.get("sourceId") and preview.get("filename")
+    }
+    if not names:
+        return
+    result["sourceNames"] = names
+    for finding in result.get("findings", []) or []:
+        for item in finding.get("evidence", []) or []:
+            if isinstance(item, dict) and item.get("sourceId") in names:
+                item.setdefault("filename", names[item["sourceId"]])
+    for key in ("clarificationQuestions", "warnings"):
+        messages = []
+        for message in result.get(key, []) or []:
+            text = str(message)
+            for source_id, filename in names.items():
+                text = text.replace(source_id, filename)
+            messages.append(text)
+        result[key] = messages
+
+
+def summarize(client, findings):
+    """Return a short AI case summary, or None. Called once after a live analysis."""
+    if not findings:
+        return None
+    try:
+        from core.explain import summarize_case
+
+        return summarize_case(client, findings).get("summary")
+    except Exception:
+        return None
+
+
+def _facts_from_findings(findings):
+    """Validated document quotes from findings, for Q&A when the pipeline omits facts."""
+    by_source = {}
+    for finding in findings or []:
+        for item in finding.get("evidence", []) or []:
+            if isinstance(item, dict) and item.get("sourceType") == "document" and item.get("quote"):
+                facts = by_source.setdefault(item.get("sourceId"), [])
+                fact = {"field": "evidence", "value": item["quote"], "location": item.get("location"), "quote": item["quote"]}
+                if fact not in facts:
+                    facts.append(fact)
+    return [{"sourceId": source_id, "docType": None, "facts": facts} for source_id, facts in by_source.items()]
+
+
+def ask_question(question, client, accounts, analysis, history):
+    """Answer an advisor question from the current analysis. Raises on Bedrock errors."""
+    from core.assistant import answer_question
+
+    findings = analysis.get("findings", [])
+    facts_list = analysis.get("facts") or _facts_from_findings(findings)
+    return answer_question(question, facts_list, client, accounts, findings, history)
 
 
 def persist_decision(client_id, analysis_id, finding_id, decision, reviewer, note, backend=None):

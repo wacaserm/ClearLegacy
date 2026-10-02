@@ -48,6 +48,12 @@ def render_findings(client_id, analysis, workspace, sample=False):
     elif status == "review_needed":
         st.info(f"{len(findings)} finding(s) need advisor review.")
 
+    if analysis.get("summary"):
+        with st.container(border=True):
+            st.markdown("**Case summary**")
+            st.write(analysis["summary"])
+            st.caption("AI-generated from the findings below. Review the evidence before acting.")
+
     for warning in analysis.get("warnings", []):
         st.warning(warning)
     for question in analysis.get("clarificationQuestions", []):
