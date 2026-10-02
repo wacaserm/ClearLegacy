@@ -6,6 +6,7 @@ read with asynchronous StartDocumentTextDetection, then the temporary object
 version is deleted. Errors raise OcrError so callers can fall back.
 """
 
+import hashlib
 import time
 import uuid
 
@@ -16,6 +17,14 @@ from core.bedrock_client import get_client
 
 POLL_SECONDS = 2
 TIMEOUT_SECONDS = 60
+
+# Streamlit previews uploads on every rerun; cache by file content so each
+# unique file is sent to Textract once per process.
+_cache: dict[str, object] = {}
+
+
+def _key(kind: str, data: bytes) -> str:
+    return f"{kind}:{hashlib.sha256(data).hexdigest()}"
 
 
 class OcrError(RuntimeError):
@@ -36,6 +45,13 @@ def _lines(blocks) -> dict[int, list[str]]:
 
 def ocr_single(data: bytes) -> str:
     """OCR one image or single-page PDF; returns its text."""
+    key = _key("single", data)
+    if key not in _cache:
+        _cache[key] = _ocr_single(data)
+    return _cache[key]
+
+
+def _ocr_single(data: bytes) -> str:
     try:
         response = _client("textract").detect_document_text(Document={"Bytes": data})
     except (ClientError, BotoCoreError) as error:
@@ -45,6 +61,13 @@ def ocr_single(data: bytes) -> str:
 
 def ocr_multipage(data: bytes, filename: str) -> dict[int, str]:
     """OCR a multi-page PDF through S3 and the async API; returns {page: text}."""
+    key = _key("multi", data)
+    if key not in _cache:
+        _cache[key] = _ocr_multipage(data, filename)
+    return _cache[key]
+
+
+def _ocr_multipage(data: bytes, filename: str) -> dict[int, str]:
     bucket = config.bucket()
     if not bucket:
         raise OcrError("multi-page OCR needs CLEARLEGACY_BUCKET (run infra/setup_aws.py)")

@@ -27,6 +27,7 @@ def clients(monkeypatch):
     s3 = boto3.client("s3", region_name="us-east-1", aws_access_key_id="x", aws_secret_access_key="x")
     monkeypatch.setattr(ocr, "_client", lambda service: {"textract": textract, "s3": s3}[service])
     monkeypatch.setattr(ocr, "POLL_SECONDS", 0)
+    ocr._cache.clear()
     monkeypatch.setenv("CLEARLEGACY_USE_TEXTRACT", "1")
     monkeypatch.setenv("CLEARLEGACY_BUCKET", "test-bucket")
     config.drain_warnings()
@@ -116,3 +117,11 @@ def test_image_upload_is_ocrd(clients):
     textract.add_response("detect_document_text", {"Blocks": [_line(LINE)]}, {"Document": {"Bytes": b"\x89PNG"}})
     doc = read_document(b"\x89PNG", "scan.png")
     assert doc["status"] == "ok" and doc["sections"][0]["text"] == LINE
+
+
+def test_same_file_is_ocrd_once(clients):
+    textract, _ = clients
+    textract.add_response("detect_document_text", {"Blocks": [_line(LINE)]}, {"Document": {"Bytes": ONE_PAGE}})
+    first = read_document(ONE_PAGE, "planning_summary.pdf")
+    second = read_document(ONE_PAGE, "planning_summary.pdf")  # Stubber would fail on a second call
+    assert first["sections"] == second["sections"]

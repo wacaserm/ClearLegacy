@@ -7,7 +7,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Callable
 
-from . import store
+from . import config, store
 from .document_reader import read_document
 
 
@@ -19,15 +19,29 @@ def _load_function(module_name: str, function_name: str) -> tuple[Callable[..., 
 		return None, f"Integration blocker: {module_name}.{function_name} is unavailable ({exc.__class__.__name__})."
 
 
-def _document_input(item: Any) -> dict[str, Any]:
+def _document_input(item: Any, client_id: str | None = None) -> dict[str, Any]:
 	if isinstance(item, dict):
 		return item
 	if isinstance(item, (tuple, list)) and len(item) == 2:
-		return read_document(item[0], str(item[1]))
-	if hasattr(item, "read"):
-		content = item.read()
-		return read_document(content, getattr(item, "name", "upload"))
-	raise TypeError("documents must contain document dictionaries, (bytes, filename) pairs, or file-like uploads.")
+		content, filename = item[0], str(item[1])
+	elif hasattr(item, "read"):
+		content, filename = item.read(), getattr(item, "name", "upload")
+	else:
+		raise TypeError("documents must contain document dictionaries, (bytes, filename) pairs, or file-like uploads.")
+	document = read_document(content, filename)
+	if client_id and config.use_s3():
+		_store_in_s3(document, client_id, filename, content)
+	return document
+
+
+def _store_in_s3(document: dict[str, Any], client_id: str, filename: str, content: bytes) -> None:
+	"""Keep an encrypted S3 copy; processing continues locally if this fails."""
+	from .s3_documents import S3StorageError, store_upload
+
+	try:
+		document.update(store_upload(client_id, filename, content))
+	except S3StorageError as exc:
+		config.aws_warning(f"S3 storage unavailable; continuing locally ({exc}).")
 
 
 def _validated_facts(validation: Any) -> tuple[dict[str, Any] | None, list[str]]:
@@ -48,6 +62,15 @@ def _validated_facts(validation: Any) -> tuple[dict[str, Any] | None, list[str]]
 
 
 def analyze(client_id: str, documents: list[Any]) -> dict[str, Any]:
+	result = _analyze(client_id, documents)
+	# Surface any AWS fallbacks (OCR, S3, DynamoDB, masking) that happened during this run.
+	for warning in config.drain_warnings():
+		if warning not in result["warnings"]:
+			result["warnings"].append(warning)
+	return result
+
+
+def _analyze(client_id: str, documents: list[Any]) -> dict[str, Any]:
 	analysis_id = f"analysis-{uuid.uuid4()}"
 	result: dict[str, Any] = {
 		"analysisId": analysis_id,
@@ -70,7 +93,7 @@ def analyze(client_id: str, documents: list[Any]) -> dict[str, Any]:
 			result["warnings"].append(blocker)
 
 	try:
-		parsed_documents = [_document_input(item) for item in documents]
+		parsed_documents = [_document_input(item, client_id) for item in documents]
 	except Exception as exc:
 		result["warnings"].append(f"Document integration failed: {exc}")
 		return result
