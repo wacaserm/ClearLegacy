@@ -71,3 +71,12 @@ def test_quotes_verify_against_real_pdf_text():
     }
     out = validate_facts(_facts(assets=[asset]), pages)
     assert out["assets"][0]["page"] == 1
+
+
+def test_ellipsis_quote_kept_only_if_fragments_verify_in_order():
+    ok = _person("Emily Johnson", "I give the residue of my estate... to my children, Emily Johnson", 1)
+    reordered = _person("David Johnson", "to my children… I give the residue", 1)
+    invented = _person("Sarah Johnson", "I give the residue ... to my wife Linda", 1)
+    out = validate_facts(_facts(people=[ok, reordered, invented]), PAGES)
+    assert [p["name"] for p in out["people"]] == ["Emily Johnson"]
+    assert len(out["dropped"]) == 2

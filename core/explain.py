@@ -100,6 +100,8 @@ Look for things simple field-matching rules might miss, for example: a fiduciary
 Rules:
 - Use only the facts and records provided. Never speculate beyond them or state legal conclusions.
 - Every finding needs evidence. Document evidence must copy a quote exactly from a document fact, with that fact's docType and page. Account evidence must quote an exact value from the client or account record (page null, docType null).
+- The title must describe only what the evidence shows, naming roles exactly as the documents do.
+- Do not flag trivial differences such as middle initials, name formatting, or abbreviations of the same person.
 - Return an empty list if nothing is worth flagging. Prefer fewer, well-supported findings."""
 
 

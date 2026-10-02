@@ -186,16 +186,38 @@ def _normalize(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+_ELLIPSIS = re.compile(r"\s*(?:\.\s*\.\s*\.|…)\s*")
+
+
+def _fragments(quote: str) -> list[str]:
+    """Split a quote on ellipses; every fragment must be verbatim document text."""
+    parts = [_normalize(p).strip(" \"'") for p in _ELLIPSIS.split(_normalize(quote))]
+    return [p for p in parts if p]
+
+
+def _contains_in_order(text: str, fragments: list[str]) -> bool:
+    pos = 0
+    for frag in fragments:
+        pos = text.find(frag, pos)
+        if pos < 0:
+            return False
+        pos += len(frag)
+    return True
+
+
 def _locate(quote: str, claimed_page, pages: list[dict]):
-    """Return the page number containing the quote, preferring the claimed page; None if absent."""
-    needle = _normalize(quote).strip(" \"'")
-    if not needle:
+    """Return the page number containing the quote, preferring the claimed page; None if absent.
+
+    A quote shortened with "..." matches only if every fragment appears, in order, on one page.
+    """
+    fragments = _fragments(quote)
+    if not fragments:
         return None
     by_page = {p["page"]: _normalize(p["text"]) for p in pages}
-    if claimed_page in by_page and needle in by_page[claimed_page]:
+    if claimed_page in by_page and _contains_in_order(by_page[claimed_page], fragments):
         return claimed_page
     for page_num, text in by_page.items():
-        if needle in text:
+        if _contains_in_order(text, fragments):
             return page_num
     return None
 
