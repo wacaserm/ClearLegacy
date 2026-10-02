@@ -66,3 +66,20 @@ def test_summary_is_optional(monkeypatch):
     monkeypatch.setattr(core.explain, "summarize_case", boom)
     assert adapter.summarize({}, [FINDING]) is None
     assert adapter.summarize({}, []) is None
+
+
+def test_ask_question_quotes_document_text_when_available(monkeypatch):
+    import core.assistant
+    monkeypatch.setattr(core.assistant, "answer_question", lambda q, facts_list, *a: {"facts": facts_list})
+    analysis = {"findings": [FINDING], "documents": [
+        {"sourceId": SOURCE, "filename": "planning_summary.pdf", "docType": "planning_summary",
+         "sections": [{"location": "page 1", "text": "For brokerage, Avery and Riley at 50% each."}]}]}
+    facts = adapter.ask_question("q", {}, [], analysis, [])["facts"]
+    assert facts[0]["facts"][0]["quote"] == "For brokerage, Avery and Riley at 50% each."
+    assert facts[0]["facts"][0]["location"] == "page 1"
+
+
+def test_analyze_keeps_read_text_for_qa():
+    result = adapter.analyze_documents("morgan", UPLOADS, _backend(lambda c, d: {"status": "review_needed", "findings": []}),
+                                       [dict(PREVIEWS[0], sections=[{"location": "page 1", "text": "hi"}])])
+    assert result["documents"][0]["sections"] == [{"location": "page 1", "text": "hi"}]

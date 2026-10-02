@@ -113,3 +113,21 @@ def test_assistant_strips_leaked_markup_and_infers_can_answer(monkeypatch):
         "citations": [_ev_doc("Thomas Johnson, as Executor")]})
     out = assistant_mod.answer_question("Who is executor?", FACTS, CLIENT, [])
     assert out["answer"] == "Thomas Johnson is the executor." and out["canAnswer"] is True
+
+
+def test_assistant_withholds_uncited_answer_when_can_answer_missing(monkeypatch):
+    monkeypatch.setattr(assistant_mod, "call_tool", lambda **kw: {
+        "answer": "Taylor Morgan is the beneficiary.</answer><parameter name=\"citations\">[...]", "citations": []})
+    out = assistant_mod.answer_question("Who?", FACTS, CLIENT, [])
+    assert out["answer"] == assistant_mod.UNSUPPORTED_ANSWER and out["citations"] == []
+
+
+def test_assistant_shows_explicit_cannot_answer():
+    import core.assistant as a
+    a_call = a.call_tool
+    try:
+        a.call_tool = lambda **kw: {"citations": [], "canAnswer": False, "answer": "The records don't include an SSN."}
+        out = a.answer_question("SSN?", FACTS, CLIENT, [])
+    finally:
+        a.call_tool = a_call
+    assert out == {"answer": "The records don't include an SSN.", "canAnswer": False, "citations": [], "droppedCitations": 0}

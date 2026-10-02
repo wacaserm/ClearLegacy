@@ -164,6 +164,12 @@ def analyze_documents(client_id, documents, backend=None, previews=None):
     result = analyze(client_id, [(document["file_bytes"], document["filename"]) for document in documents])
     if isinstance(result, dict):
         _label_sources(result, previews or [])
+        # Session-only copy of the read text so Q&A can quote whole documents.
+        result["documents"] = [
+            {"sourceId": p.get("sourceId"), "filename": p.get("filename"), "docType": p.get("docType"),
+             "sections": p.get("sections", [])}
+            for p in previews or [] if p.get("sourceId")
+        ]
     return result
 
 
@@ -216,12 +222,36 @@ def _facts_from_findings(findings):
     return [{"sourceId": source_id, "docType": None, "facts": facts} for source_id, facts in by_source.items()]
 
 
+def _facts_from_documents(documents):
+    """Document sections as quotable text; citations must still match this text."""
+    return [
+        {
+            "sourceId": document["sourceId"],
+            "docType": document.get("docType"),
+            "facts": [
+                {"field": "document_text", "value": document.get("filename") or "", "location": section.get("location"),
+                 "quote": section.get("text", "")}
+                for section in document.get("sections", []) if section.get("text")
+            ],
+        }
+        for document in documents or [] if document.get("sourceId")
+    ]
+
+
 def ask_question(question, client, accounts, analysis, history):
-    """Answer an advisor question from the current analysis. Raises on Bedrock errors."""
+    """Answer an advisor question from the current analysis. Raises on Bedrock errors.
+
+    Uses validated facts if the pipeline returns them, else the read document
+    text, else the quotes inside findings.
+    """
     from core.assistant import answer_question
 
     findings = analysis.get("findings", [])
-    facts_list = analysis.get("facts") or _facts_from_findings(findings)
+    facts_list = (
+        analysis.get("facts")
+        or _facts_from_documents(analysis.get("documents"))
+        or _facts_from_findings(findings)
+    )
     return answer_question(question, facts_list, client, accounts, findings, history)
 
 
