@@ -70,12 +70,13 @@ Keep the terminal running while using the app. To stop it, press **Ctrl+C**.
 1. Choose a household in the sidebar (Jordan Morgan, Sam Patel, or Robin Rivera).
 2. Upload that household's planning summary and account records from
    `sample_data/` (PDF or DOCX; upload one format of each, not both).
-3. Click **Analyze documents**. Bedrock is only called when you click, and the
-   result is kept for the session (about 30 seconds per household).
-4. Review findings with their document and account evidence, then confirm,
-   dismiss, or flag each one for attorney review.
-5. Use the **Ask ClearLegacy** tab for follow-up questions. Answers cite their
-   sources and are read-only.
+3. Click **Analyze**. Bedrock is only called when you click, and the result is
+   kept for the session (about 30 seconds per household; the steps show live).
+4. Review each finding's evidence ledger (what the document says next to what the
+   account record says), then **Confirm**, **Dismiss**, or **Flag for attorney**
+   with an optional note.
+5. Use the **Ask ClearLegacy** tab for follow-up questions (try a starter
+   question). Answers cite their sources and are read-only.
 
 Expected results:
 
