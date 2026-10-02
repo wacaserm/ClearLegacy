@@ -168,6 +168,8 @@ def verify_account_evidence(ev: dict, client: dict, accounts: list[dict]) -> dic
                 break
         if not piece or any(piece in leaf for leaf in leaves):
             continue
+        if piece.endswith("%") and piece[:-1].strip() in leaves:  # "100%" vs numeric 100
+            continue
         # Allow a short label like "recorded 2009-05-11", but only if the rest is an exact value.
         label = re.match(r"^[a-z]+(?: [a-z]+)? (.+)$", piece)
         if not (label and label.group(1) in leaves):
