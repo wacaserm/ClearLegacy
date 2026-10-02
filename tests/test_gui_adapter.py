@@ -88,3 +88,44 @@ def test_analyze_keeps_read_text_for_qa():
 def test_fixture_households_are_unique():
     ids = [h["clientId"] for h in adapter._fixture_households()]
     assert len(ids) == len(set(ids))  # 01_morgan_* and 04_morgan_* are one household
+
+
+def test_progress_is_optional_and_passed_through():
+    seen = {}
+
+    def analyze(client_id, documents, progress=None):
+        seen["progress"] = progress
+        if progress:
+            progress("reading", "1 document(s)")
+        return {"status": "no_discrepancies_found", "findings": []}
+
+    steps = []
+    adapter.analyze_documents("morgan", UPLOADS, _backend(analyze), PREVIEWS, progress=lambda s, d=None: steps.append(s))
+    assert steps == ["reading"]
+    adapter.analyze_documents("morgan", UPLOADS, _backend(lambda c, d: {"status": "failed", "findings": []}), PREVIEWS)
+
+
+def test_pipeline_reports_steps_and_survives_bad_callback(monkeypatch):
+    import core.pipeline as pipeline
+
+    fakes = {
+        "extract_facts": lambda doc: {"sourceId": doc["sourceId"], "docType": "will", "facts": [], "warnings": []},
+        "validate_facts": lambda facts, doc: facts,
+        "reconcile": lambda facts, client, accounts: {"status": "review_needed", "findings": [{"findingId": "F1"}]},
+        "explain": lambda finding: {**finding, "explanation": "x", "recommendedAction": "y"},
+    }
+    monkeypatch.setattr(pipeline, "_load_function", lambda module, name: (fakes[name], None))
+    monkeypatch.setattr(pipeline.store, "get_client", lambda cid: {"clientId": cid})
+    monkeypatch.setattr(pipeline.store, "get_accounts", lambda cid: [])
+    monkeypatch.setattr(pipeline.store, "save_findings", lambda *a: None)
+    doc = {"sourceId": "s1", "filename": "will.pdf", "sections": [], "status": "ok", "warnings": []}
+    steps = []
+    result = pipeline.analyze("morgan", [doc], progress=lambda step, detail=None: steps.append(step))
+    assert steps == ["reading", "extracting", "checking", "comparing", "explaining"]
+    assert result["status"] == "review_needed"
+
+    def broken(step, detail=None):
+        raise RuntimeError("UI glitch")
+
+    assert pipeline.analyze("morgan", [doc], progress=broken)["status"] == "review_needed"
+    assert pipeline.analyze("morgan", [doc])["status"] == "review_needed"  # unchanged without a callback
