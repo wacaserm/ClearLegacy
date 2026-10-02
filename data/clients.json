@@ -1,0 +1,52 @@
+{
+  "clients": [
+    {
+      "clientId": "morgan",
+      "name": "Jordan Morgan",
+      "currentSpouse": "Casey Morgan",
+      "formerSpouse": "Taylor Morgan",
+      "accounts": [
+        {
+          "accountId": "DEMO-MORGAN-IRA",
+          "accountType": "IRA",
+          "sourceId": "MORGAN-ACCOUNT-SNAPSHOT-2026-09-28",
+          "snapshotDate": "2026-09-28",
+          "designationUpdatedDate": "2020-06-15",
+          "primaryBeneficiaries": [
+            {
+              "name": "Taylor Morgan",
+              "relationship": "former spouse",
+              "percentage": 100
+            }
+          ],
+          "contingentBeneficiaries": [],
+          "contingentDataStatus": "none_listed_in_snapshot",
+          "sourceQuote": "Account DEMO-MORGAN-IRA: Primary beneficiary is Taylor Morgan, former spouse, 100%. Designation last updated 2020-06-15. No contingent beneficiaries are listed in this supplied snapshot."
+        },
+        {
+          "accountId": "DEMO-MORGAN-BROKERAGE",
+          "accountType": "brokerage",
+          "designationType": "TOD",
+          "sourceId": "MORGAN-ACCOUNT-SNAPSHOT-2026-09-28",
+          "snapshotDate": "2026-09-28",
+          "designationUpdatedDate": "2026-09-26",
+          "primaryBeneficiaries": [
+            {
+              "name": "Avery Morgan",
+              "relationship": "child",
+              "percentage": 50
+            },
+            {
+              "name": "Riley Morgan",
+              "relationship": "child",
+              "percentage": 50
+            }
+          ],
+          "contingentBeneficiaries": null,
+          "contingentDataStatus": "not_supplied",
+          "sourceQuote": "Account DEMO-MORGAN-BROKERAGE: Primary transfer-on-death beneficiaries are Avery Morgan, child, 50%, and Riley Morgan, child, 50%. Designation last updated 2026-09-26."
+        }
+      ]
+    }
+  ]
+}
