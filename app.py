@@ -1,5 +1,7 @@
 import streamlit as st
 
+from core.extract import extract_facts
+
 st.set_page_config(page_title="ClearLegacy", layout="wide")
 
 st.title("ClearLegacy")
@@ -38,4 +40,26 @@ with right:
     )
 
 if st.button("Analyze records", type="primary"):
-    st.info("Interface ready. Next step: connect Amazon Bedrock.")
+    documents = [
+        {
+            "sourceId": "streamlit-planning-summary",
+            "filename": "planning_summary.txt",
+            "docType": "planning_summary",
+            "sections": [{"location": "page 1", "text": st.session_state.planning_summary}],
+        },
+        {
+            "sourceId": "streamlit-account-record",
+            "filename": "account_record.txt",
+            "docType": "account_records",
+            "sections": [{"location": "page 1", "text": st.session_state.beneficiary_record}],
+        },
+    ]
+    try:
+        with st.spinner("Extracting evidence with Amazon Bedrock..."):
+            planning_facts = extract_facts(documents[0])
+            account_facts = extract_facts(documents[1])
+        st.success("Bedrock extraction completed.")
+        st.subheader("Extracted facts")
+        st.json({"planning": planning_facts, "account": account_facts})
+    except Exception as exc:
+        st.error(f"Bedrock extraction failed: {exc}")
