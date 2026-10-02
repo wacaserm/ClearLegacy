@@ -1,5 +1,6 @@
 import streamlit as st
 
+from ui import compat
 from ui.review import render_finding_actions
 
 
@@ -67,7 +68,7 @@ def render_findings(client_id, analysis, workspace, sample=False):
         with st.container(border=True):
             priority = str(finding.get("priority", "review")).replace("_", " ").title()
             color = "red" if priority.lower() in {"critical", "high"} else "orange"
-            st.badge(f"{priority} priority", color=color)
+            compat.badge(f"{priority} priority", color=color)
             st.subheader(finding.get("title", "Finding"))
             st.write(finding.get("explanation", "No explanation was provided."))
             follow_up = finding.get("followUpQuestion") or finding.get("clarificationQuestion")
