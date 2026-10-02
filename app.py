@@ -125,7 +125,7 @@ if analyze_clicked:
             result.setdefault("analysisId", None)
             if result["findings"]:
                 with st.spinner("Writing a short case summary…"):
-                    result["summary"] = gui_adapter.summarize(client, result["findings"])
+                    result["summary"] = gui_adapter.summarize(client, result["findings"], result)
             complete_analysis(
                 selected_client_id,
                 result,

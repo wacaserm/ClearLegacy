@@ -202,14 +202,22 @@ def _label_sources(result, previews):
         result[key] = messages
 
 
-def summarize(client, findings):
-    """Return a short AI case summary, or None. Called once after a live analysis."""
+def summarize(client, findings, result=None):
+    """Return a short AI case summary, or None. Called once after a live analysis.
+
+    If the analysis result is passed, the summary's Bedrock usage is added to it.
+    """
     if not findings:
         return None
     try:
+        from core.bedrock_client import merge_usage, usage_since, usage_snapshot
         from core.explain import summarize_case
 
-        return summarize_case(client, findings).get("summary")
+        before = usage_snapshot()
+        summary = summarize_case(client, findings).get("summary")
+        if isinstance(result, dict):
+            result["usage"] = merge_usage(result.get("usage"), usage_since(before))
+        return summary
     except Exception:
         return None
 

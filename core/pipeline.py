@@ -62,7 +62,11 @@ def _validated_facts(validation: Any) -> tuple[dict[str, Any] | None, list[str]]
 
 
 def analyze(client_id: str, documents: list[Any]) -> dict[str, Any]:
+	from .bedrock_client import usage_since, usage_snapshot
+
+	before = usage_snapshot()
 	result = _analyze(client_id, documents)
+	result["usage"] = usage_since(before)  # Bedrock tokens and estimated cost for this analysis
 	# Surface any AWS fallbacks (OCR, S3, DynamoDB, masking) that happened during this run.
 	for warning in config.drain_warnings():
 		if warning not in result["warnings"]:
