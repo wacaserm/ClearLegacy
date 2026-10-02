@@ -180,12 +180,47 @@ def extract_facts(document: dict) -> dict:
         model_id=MODEL_ID,
         max_tokens=8192,
     )
+    doc_type = document.get("docType") or result.get("docType")
+    raw_facts = result.get("facts")
+    facts, warnings = [], []
+    for raw in raw_facts if isinstance(raw_facts, list) else []:
+        fact, problem = _clean_fact(raw)
+        if fact is None:
+            warnings.append({"code": "malformed_fact", "message": f"Skipped malformed fact from {source_id}: {problem}"})
+            log.warning("Skipped malformed fact from %s: %s", source_id, problem)
+        else:
+            facts.append(fact)
+    if not isinstance(raw_facts, list):
+        warnings.append({"code": "malformed_output", "message": f"Model returned no fact list for {source_id}"})
     return {
         "sourceId": source_id,
-        "docType": document.get("docType") or result.get("docType") or "other",
-        "facts": [f for f in result.get("facts", []) if isinstance(f, dict)],
-        "warnings": [],
+        "docType": doc_type if doc_type in DOC_TYPES else "other",
+        "facts": facts,
+        "warnings": warnings,
     }
+
+
+_OPTIONAL_KEYS = ("accountRef", "tier", "allocation", "relationship", "asOf")
+
+
+def _clean_fact(raw) -> tuple[dict | None, str | None]:
+    """Coerce one model fact into the contract shape, or explain why it can't be used."""
+    if not isinstance(raw, dict):
+        return None, "not an object"
+    if raw.get("field") not in FACT_FIELDS:
+        return None, f"unknown field {raw.get('field')!r}"
+    fact = {}
+    for key in ("field", "value", "location", "quote"):
+        value = raw.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return None, f"{raw.get('field')} is missing {key}"
+        fact[key] = value.strip()
+    for key in _OPTIONAL_KEYS:
+        value = raw.get(key)
+        fact[key] = value.strip() if isinstance(value, str) and value.strip() else None
+    if fact["tier"] not in (None, "primary", "contingent"):
+        fact["tier"] = None
+    return fact, None
 
 
 def extract_document(path, doc_type: str | None = None, source_id: str | None = None) -> dict:

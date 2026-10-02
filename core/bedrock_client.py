@@ -4,13 +4,14 @@ Credentials come from the standard AWS environment variables; nothing is read
 from or written to files here.
 """
 
+import json
 import logging
 import os
 from functools import lru_cache
 
 import boto3
 from botocore.config import Config
-from botocore.exceptions import ClientError, NoCredentialsError
+from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 log = logging.getLogger(__name__)
 
@@ -95,14 +96,28 @@ def call_tool(
         if is_credentials_error(exc):
             raise AWSCredentialsExpired() from exc
         raise BedrockError(f"Bedrock call to {model_id} failed: {exc}") from exc
+    except BotoCoreError as exc:  # timeouts, connection errors
+        raise BedrockError(f"Could not reach Bedrock ({model_id}): {exc}") from exc
 
     stop_reason = response.get("stopReason")
+    if stop_reason == "max_tokens":
+        # A truncated tool input may be partial; never treat it as complete.
+        raise BedrockError(
+            f"Model {model_id} hit maxTokens={max_tokens} before finishing '{tool_name}'; "
+            "increase max_tokens or send less text"
+        )
     for block in response.get("output", {}).get("message", {}).get("content", []):
         if "toolUse" in block and block["toolUse"].get("name") == tool_name:
-            return block["toolUse"]["input"]
+            tool_input = block["toolUse"].get("input")
+            if isinstance(tool_input, str):
+                try:
+                    tool_input = json.loads(tool_input)
+                except json.JSONDecodeError:
+                    tool_input = None
+            if not isinstance(tool_input, dict):
+                raise BedrockError(f"Model {model_id} returned malformed '{tool_name}' input")
+            return tool_input
 
-    hint = " (hit maxTokens; increase max_tokens)" if stop_reason == "max_tokens" else ""
     raise BedrockError(
-        f"Model {model_id} did not return a '{tool_name}' toolUse block "
-        f"(stopReason={stop_reason}){hint}"
+        f"Model {model_id} did not return a '{tool_name}' toolUse block (stopReason={stop_reason})"
     )
