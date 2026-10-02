@@ -41,6 +41,11 @@ Keep the terminal running while using the app. To stop it, press **Ctrl+C**.
 The starter version displays a placeholder message.
 AI analysis will work after the Amazon Bedrock integration is connected.
 
+## Project guide
+
+See [the ClearLegacy project guide](docs/PROJECT_GUIDE.md)
+for scope, architecture, team responsibilities, and demo expectations.
+
 ### Troubleshooting
 
 - **`app.py` not found:** Make sure your terminal is in the repository folder.
