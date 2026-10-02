@@ -60,7 +60,7 @@ def render_findings(client_id, analysis, workspace, sample=False):
         finding_id = finding.get("findingId", f"finding-{index + 1}")
         with st.container(border=True):
             priority = str(finding.get("priority", "review")).replace("_", " ").title()
-            color = "red" if priority.lower() == "high" else "orange"
+            color = "red" if priority.lower() in {"critical", "high"} else "orange"
             st.badge(f"{priority} priority", color=color)
             st.subheader(finding.get("title", "Finding"))
             st.write(finding.get("explanation", "No explanation was provided."))
