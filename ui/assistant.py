@@ -2,9 +2,10 @@ import streamlit as st
 
 from services import gui_adapter
 from ui import compat
-from ui.html import esc, render
+from ui.html import esc, humanize_field, render
 
 LOGO = "ui/assets/clear-legacy-logo.png"
+USER_AVATAR = ":material/person:"
 
 STARTERS = {
     "review_needed": [
@@ -30,11 +31,11 @@ def _citations_html(citations, names):
     for item in citations:
         if item.get("sourceType") == "document":
             source = item.get("filename") or names.get(item.get("sourceId")) or item.get("sourceId", "Document")
-            rows.append(f'<blockquote class="cl-quote">{esc(item.get("quote", ""))}</blockquote>'
+            rows.append(f'<div class="cl-quote" role="note">{esc(item.get("quote", ""))}</div>'
                         f'<p class="cl-source">{esc(source)} · {esc(item.get("location", ""))}</p>')
         else:
             rows.append(f'<p class="cl-source"><b>{esc(item.get("sourceId", "Account"))}</b> · '
-                        f'{esc(item.get("field", ""))}: {esc(item.get("value", ""))}</p>')
+                        f'{esc(humanize_field(item.get("field")))}: {esc(item.get("value", ""))}</p>')
     return "".join(rows)
 
 
@@ -71,24 +72,27 @@ def render_assistant(client_id, client, accounts, analysis, workspace, source):
                 if compat.button(starter, key=f"chip_{client_id}_{i}", stretch=True):
                     question = starter
 
-    for turn in history:
-        st.chat_message("user").write(turn["question"])
-        with st.chat_message("assistant", avatar=LOGO):
-            _render_answer(turn["answer"], turn.get("citations", []), names)
+    # The thread container comes before the input, so new messages render above it.
+    thread = st.container()
+    with thread:
+        for turn in history:
+            st.chat_message("user", avatar=USER_AVATAR).write(turn["question"])
+            with st.chat_message("assistant", avatar=LOGO):
+                _render_answer(turn["answer"], turn.get("citations", []), names)
 
     typed = st.chat_input("Ask about this household", key=f"ask_{client_id}")
     question = typed or question
     if not question:
         return
-    st.chat_message("user").write(question)
-    with st.chat_message("assistant", avatar=LOGO):
-        try:
-            with st.spinner("Checking the documents and records…"):
-                reply = gui_adapter.ask_question(question, client, accounts, analysis, history)
-        except Exception as error:
-            render(f'<div class="cl-notice error">The question could not be answered: {esc(error)}</div>')
-            return
-        _render_answer(reply["answer"], reply.get("citations", []), names)
+    with thread:
+        st.chat_message("user", avatar=USER_AVATAR).write(question)
+        with st.chat_message("assistant", avatar=LOGO):
+            try:
+                with st.spinner("Checking the documents and records…"):
+                    reply = gui_adapter.ask_question(question, client, accounts, analysis, history)
+            except Exception as error:
+                render(f'<div class="cl-notice error">The question could not be answered: {esc(error)}</div>')
+                return
+            _render_answer(reply["answer"], reply.get("citations", []), names)
+    # No st.rerun() here: it would reset the tabs to Findings. Starter chips hide on the next render.
     history.append({"question": question, "answer": reply["answer"], "citations": reply.get("citations", [])})
-    if not typed:
-        st.rerun()  # hide the starter chips once a conversation has begun

@@ -61,10 +61,10 @@ try:
     households = gui_adapter.get_households(backend)
 except Exception as error:
     households = gui_adapter._fixture_households()
-    render(f'<div class="cl-notice warn">Stored client records are unavailable; using fictional fixture households. {esc(error)}</div>')
+    st.session_state["clearlegacy_household_warning"] = str(error)
 
 if not households:
-    render('<h1 class="cl-title">ClearLegacy</h1>'
+    render('<div class="cl-title" role="heading" aria-level="1">ClearLegacy</div>'
            '<div class="cl-notice">No client records or fictional household fixtures are available in this checkout.</div>')
     st.stop()
 
@@ -81,20 +81,22 @@ if selected_client_id is None:
 select_household(selected_client_id)
 workspace = get_workspace(selected_client_id)
 
+load_messages = []
 try:
     client = gui_adapter.get_client(selected_client_id, backend)
 except Exception as error:
     client = {"clientId": selected_client_id, "name": next(
         item["name"] for item in households if item["clientId"] == selected_client_id
     )}
-    render(f'<div class="cl-notice warn">Client profile could not be loaded: {esc(error)}</div>')
+    load_messages.append(f"Client profile could not be loaded: {error}")
 try:
     accounts = gui_adapter.get_accounts(selected_client_id, backend)
 except Exception as error:
     accounts = []
-    render(f'<div class="cl-notice warn">Account records could not be loaded: {esc(error)}</div>')
+    load_messages.append(f"Account records could not be loaded: {error}")
 
 header_slot = st.empty()
+messages_slot = st.empty()
 render_account_details(accounts)
 render('<div style="height:24px"></div>')
 documents, previews, extraction_errors, documents_card = render_uploads(selected_client_id, backend)
@@ -107,11 +109,18 @@ if uploads_changed and had_analysis:
 workspace = get_workspace(selected_client_id)
 with header_slot.container():
     render_household(client, workspace["status"], accounts)
-render_aws_warnings()
-notice = pop_notice(selected_client_id)
-if notice:
-    tone = "error" if notice.startswith("Error:") else "ok"
-    render(f'<div class="cl-notice {tone}">{esc(notice.removeprefix("Error: "))}</div>')
+# Messages go into one fixed container: a varying number of elements above st.tabs
+# would change the tabs' position, and Streamlit would reset them to the first tab.
+with messages_slot.container():
+    if st.session_state.pop("clearlegacy_household_warning", None):
+        render('<div class="cl-notice warn">Stored client records are unavailable; using fictional fixture households.</div>')
+    for message in load_messages:
+        render(f'<div class="cl-notice warn">{esc(message)}</div>')
+    render_aws_warnings()
+    notice = pop_notice(selected_client_id)
+    if notice:
+        tone = "error" if notice.startswith("Error:") else "ok"
+        render(f'<div class="cl-notice {tone}">{esc(notice.removeprefix("Error: "))}</div>')
 
 with documents_card:
     analyze_clicked = render_analyze_button(

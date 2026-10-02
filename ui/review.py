@@ -15,6 +15,8 @@ DECISION_LABELS = {
     "dismissed": ("Dismissed", "neutral"),
     "attorney_review": ("Flagged for attorney review", "review"),
     "needs_follow_up": ("Needs follow-up", "high"),  # decisions recorded before the redesign
+    "confirm": ("Confirmed", "clear"),
+    "dismiss": ("Dismissed", "neutral"),
 }
 
 
@@ -52,13 +54,17 @@ def render_finding_actions(client_id, analysis_id, finding_id, existing_decision
     return event
 
 
+def _reviewer(value):
+    return "—" if not value or value == "Not provided" else value
+
+
 def _audit_row(record, persistence):
     label, tone = decision_label(record.get("decision") or record.get("status"))
     return {
         "decision": label,
         "tone": tone,
         "note": record.get("note") or "",
-        "reviewer": record.get("reviewer") or record.get("user") or "Not provided",
+        "reviewer": _reviewer(record.get("reviewer") or record.get("user")),
         "timestamp": record.get("timestamp") or record.get("createdAt") or "",
         "persistence": persistence,
         "analysis": record.get("analysisId") or record.get("analysis_id") or "",

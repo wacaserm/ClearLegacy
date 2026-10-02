@@ -26,7 +26,7 @@ def render_household(client, status, accounts=None):
     title_column, status_column = st.columns([5, 1.4], vertical_alignment="center")
     with title_column:
         render('<p class="cl-label" style="margin:0 0 4px">Household</p>'
-               f'<h1 class="cl-title">{esc(name)}</h1>')
+               f'<div class="cl-title" role="heading" aria-level="1">{esc(name)}</div>')
     with status_column:
         compat.badge(label, color=_BADGE_COLORS.get(tone, "gray"))
 

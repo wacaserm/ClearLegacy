@@ -22,7 +22,7 @@ def _document_block(item, names):
     source = item.get("filename") or names.get(item.get("sourceId")) or "Document"
     location = item.get("location") or "location not supplied"
     quote = item.get("quote") or item.get("value") or "Quote not supplied."
-    return (f'<blockquote class="cl-quote">{esc(quote)}</blockquote>'
+    return (f'<div class="cl-quote" role="note">{esc(quote)}</div>'
             f'<p class="cl-source">{esc(source)} · {esc(location)}</p>')
 
 
@@ -49,7 +49,7 @@ def _record_rows(value):
 def _account_block(item):
     if item.get("quote"):  # fixture samples quote the account snapshot instead of a field
         source = item.get("filename") or item.get("sourceId") or "Account record"
-        return (f'<blockquote class="cl-quote">{esc(item["quote"])}</blockquote>'
+        return (f'<div class="cl-quote" role="note">{esc(item["quote"])}</div>'
                 f'<p class="cl-source">{esc(source)} · {esc(item.get("location") or "supplied record")}</p>')
     field = humanize_field(item.get("field"))
     source = item.get("sourceId") or "Account record"
@@ -191,8 +191,13 @@ def render_findings(client_id, analysis, workspace, sample=False):
 
             if decision:
                 note = decision.get("note")
-                meta = f'{esc(decision.get("reviewer") or "")} · {esc(str(decision.get("timestamp", ""))[:16].replace("T", " "))}'
-                render(f'<p class="cl-small">{meta}' + (f" · Note: {esc(note)}" if note else "") + "</p>")
+                reviewer = decision.get("reviewer")
+                parts = [str(decision.get("timestamp", ""))[:16].replace("T", " ")]
+                if reviewer and reviewer != "Not provided":
+                    parts.insert(0, reviewer)
+                if note:
+                    parts.append(f"Note: {note}")
+                render(f'<p class="cl-small">{esc(" · ".join(p for p in parts if p))}</p>')
                 with st.expander("Change decision"):
                     event = render_finding_actions(client_id, analysis_id, finding_id, decision.get("decision"), sample) or event
             else:
