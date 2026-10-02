@@ -74,16 +74,27 @@ def answer_question(
         f"<conversation>\n{json.dumps(turns, indent=2)}\n</conversation>\n\n"
         f"<question>{question}</question>\n\nAnswer using the answer_with_citations tool."
     )
-    result = call_tool(
-        system=ASSISTANT_PROMPT,
-        user_text=user_text,
-        tool_name="answer_with_citations",
-        tool_description="Answer the advisor's question with citations to document facts and account records.",
-        schema=ANSWER_SCHEMA,
-        model_id=MODEL_ID,
-        max_tokens=2048,
-    )
+    reply = None
+    for attempt in range(2):
+        result = call_tool(
+            system=ASSISTANT_PROMPT,
+            user_text=user_text,
+            tool_name="answer_with_citations",
+            tool_description="Answer the advisor's question with citations to document facts and account records.",
+            schema=ANSWER_SCHEMA,
+            model_id=MODEL_ID,
+            max_tokens=2048,
+        )
+        reply = _checked_reply(result, facts_list, client, accounts)
+        if reply is not None:
+            return reply
+        # Occasionally the model's citations get lost; one retry before withholding.
+        log.warning("Assistant answer had no verified support (attempt %d)", attempt + 1)
+    return {"answer": UNSUPPORTED_ANSWER, "canAnswer": False, "citations": [], "droppedCitations": 0}
 
+
+def _checked_reply(result: dict, facts_list, client, accounts) -> dict | None:
+    """Return a displayable reply, or None if the answer has no verified support."""
     raw_citations = result.get("citations") if isinstance(result.get("citations"), list) else []
     citations = [c for c in (verify_evidence(ev, facts_list, client, accounts) for ev in raw_citations) if c]
     dropped = len(raw_citations) - len(citations)
@@ -96,5 +107,4 @@ def answer_question(
     if result.get("canAnswer") is False and answer:
         # The model explicitly says the data can't answer; show its explanation of what's missing.
         return {"answer": answer, "canAnswer": False, "citations": [], "droppedCitations": dropped}
-    # Anything else (no verified citations, or canAnswer missing) is withheld rather than shown.
-    return {"answer": UNSUPPORTED_ANSWER, "canAnswer": False, "citations": [], "droppedCitations": dropped}
+    return None

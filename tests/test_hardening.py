@@ -157,3 +157,21 @@ def test_unavailable_model_names_the_setting(monkeypatch):
     monkeypatch.setattr(bc, "get_client", lambda service="bedrock-runtime": _BadModel())
     with pytest.raises(bc.BedrockError, match="CLEARLEGACY_MODEL_ID"):
         bc.call_tool("s", "u", "t", "d", {"type": "object"})
+
+
+def test_assistant_retries_once_when_citations_are_lost(monkeypatch):
+    replies = iter([
+        {"answer": "Thomas Johnson is the executor.", "citations": []},  # citations lost
+        {"citations": [_ev_doc("Thomas Johnson, as Executor")], "canAnswer": True, "answer": "Thomas Johnson is the executor."},
+    ])
+    calls = []
+    monkeypatch.setattr(assistant_mod, "call_tool", lambda **kw: calls.append(1) or next(replies))
+    out = assistant_mod.answer_question("Who?", FACTS, CLIENT, [])
+    assert len(calls) == 2 and out["canAnswer"] and len(out["citations"]) == 1
+
+
+def test_assistant_gives_up_after_one_retry(monkeypatch):
+    calls = []
+    monkeypatch.setattr(assistant_mod, "call_tool", lambda **kw: calls.append(1) or {"answer": "Uncited claim.", "citations": []})
+    out = assistant_mod.answer_question("Who?", FACTS, CLIENT, [])
+    assert len(calls) == 2 and out["answer"] == assistant_mod.UNSUPPORTED_ANSWER
