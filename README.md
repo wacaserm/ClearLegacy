@@ -1,5 +1,57 @@
 # ClearLegacy
 
+## Running ClearLegacy
+
+Open a PowerShell terminal in the ClearLegacy repository folder.
+
+### 1. Activate your virtual environment
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+If you have not created the environment yet, follow the Python environment
+setup section first.
+
+### 2. Install dependencies
+
+Run this on your first setup or whenever `requirements.txt` changes:
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+### 3. Start the app
+
+```powershell
+python -m streamlit run app.py
+```
+
+Streamlit will display a local URL, usually `http://localhost:8501`.
+Open that URL in your browser if it does not open automatically.
+
+Keep the terminal running while using the app. To stop it, press **Ctrl+C**.
+
+### Using the starter app
+
+1. Review or edit the sample client planning summary.
+2. Review or edit the beneficiary record.
+3. Click **Analyze records**.
+
+The starter version displays a placeholder message.
+AI analysis will work after the Amazon Bedrock integration is connected.
+
+### Troubleshooting
+
+- **`app.py` not found:** Make sure your terminal is in the repository folder.
+- **`No module named streamlit`:** Activate the correct environment and
+  install the dependencies.
+- **Activation blocked:** Launch using the environment's Python directly:
+
+```powershell
+.\.venv\Scripts\python.exe -m streamlit run app.py
+```
+
 ## Python environment setup
 
 Use a separate virtual environment for ClearLegacy. Each teammate creates
