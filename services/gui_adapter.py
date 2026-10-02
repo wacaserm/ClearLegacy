@@ -55,6 +55,8 @@ def _fixture_households():
         if len(parts) != 2:
             continue
         slug = parts[1].split("_", maxsplit=1)[0].lower()
+        if any(item["clientId"] == slug for item in households):
+            continue  # e.g. 01_morgan_discrepancies and 04_morgan_estate are one household
         households.append({"clientId": slug, "name": FIXTURE_LABELS.get(slug, f"{slug.title()} household")})
     return households
 
@@ -153,7 +155,7 @@ def preview_documents(documents, backend=None):
     return previews, errors
 
 
-def analyze_documents(client_id, documents, backend=None, previews=None):
+def analyze_documents(client_id, documents, backend=None, previews=None, progress=None):
     """Run core.pipeline.analyze once, on the raw uploads, and label sources by filename.
 
     The pipeline treats dict inputs as already-read documents, so uploads are
@@ -166,7 +168,9 @@ def analyze_documents(client_id, documents, backend=None, previews=None):
         raise BackendUnavailableError(
             "Analysis is unavailable because core.pipeline.analyze(client_id, documents) is not configured."
         )
-    result = analyze(client_id, [(document["file_bytes"], document["filename"]) for document in documents])
+    uploads = [(document["file_bytes"], document["filename"]) for document in documents]
+    # progress is optional and only passed when given, so older pipelines keep working.
+    result = analyze(client_id, uploads, progress=progress) if progress else analyze(client_id, uploads)
     if isinstance(result, dict):
         _label_sources(result, previews or [])
         # Session-only copy of the read text so Q&A can quote whole documents.

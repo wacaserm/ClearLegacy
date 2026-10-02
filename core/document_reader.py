@@ -23,6 +23,12 @@ def _document_type(filename: str) -> str:
 		return "planning_summary"
 	if "account" in name or "beneficiar" in name:
 		return "account_records"
+	if "trust" in name:
+		return "trust"
+	if "poa" in name or "power_of_attorney" in name or "power-of-attorney" in name:
+		return "poa"
+	if "will" in name:
+		return "will"
 	return Path(filename).suffix.lower().lstrip(".") or "unknown"
 
 

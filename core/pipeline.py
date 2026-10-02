@@ -61,11 +61,23 @@ def _validated_facts(validation: Any) -> tuple[dict[str, Any] | None, list[str]]
 	return facts, [str(warning) for warning in warnings]
 
 
-def analyze(client_id: str, documents: list[Any]) -> dict[str, Any]:
+def _report(progress: Callable[..., Any] | None, step: str, detail: str | None = None) -> None:
+	"""Tell an optional progress callback which step is running; never let it break analysis."""
+	if progress is None:
+		return
+	try:
+		progress(step, detail)
+	except Exception:
+		pass
+
+
+def analyze(client_id: str, documents: list[Any], progress: Callable[..., Any] | None = None) -> dict[str, Any]:
+	"""Run the analysis. Optional progress(step, detail) is called with step names:
+	reading, ocr, extracting, checking, comparing, explaining. Unused by default."""
 	from .bedrock_client import usage_since, usage_snapshot
 
 	before = usage_snapshot()
-	result = _analyze(client_id, documents)
+	result = _analyze(client_id, documents, progress)
 	result["usage"] = usage_since(before)  # Bedrock tokens and estimated cost for this analysis
 	# Surface any AWS fallbacks (OCR, S3, DynamoDB, masking) that happened during this run.
 	for warning in config.drain_warnings():
@@ -74,7 +86,7 @@ def analyze(client_id: str, documents: list[Any]) -> dict[str, Any]:
 	return result
 
 
-def _analyze(client_id: str, documents: list[Any]) -> dict[str, Any]:
+def _analyze(client_id: str, documents: list[Any], progress: Callable[..., Any] | None = None) -> dict[str, Any]:
 	analysis_id = f"analysis-{uuid.uuid4()}"
 	result: dict[str, Any] = {
 		"analysisId": analysis_id,
@@ -96,6 +108,7 @@ def _analyze(client_id: str, documents: list[Any]) -> dict[str, Any]:
 		if blocker:
 			result["warnings"].append(blocker)
 
+	_report(progress, "reading", f"{len(documents)} document(s)")
 	try:
 		parsed_documents = [_document_input(item, client_id) for item in documents]
 	except Exception as exc:
@@ -110,6 +123,10 @@ def _analyze(client_id: str, documents: list[Any]) -> dict[str, Any]:
 				f"{document.get('status')}."
 			)
 
+	ocr_documents = [d for d in parsed_documents if d.get("ocrPages")]
+	if ocr_documents:
+		_report(progress, "ocr", f"{len(ocr_documents)} scanned document(s)")
+
 	missing = [name for name, function in functions.items() if function is None]
 	if missing:
 		result["warnings"].append("Analysis is incomplete because required teammate functions are missing: " + ", ".join(missing))
@@ -123,8 +140,10 @@ def _analyze(client_id: str, documents: list[Any]) -> dict[str, Any]:
 		return result
 
 	validated: list[dict[str, Any]] = []
-	for document in parsed_documents:
+	for index, document in enumerate(parsed_documents, start=1):
+		_report(progress, "extracting", f"{document.get('filename', 'document')} ({index} of {len(parsed_documents)})")
 		extracted = functions["extract_facts"](document)
+		_report(progress, "checking", document.get("filename", "document"))
 		validation = functions["validate_facts"](extracted, document)
 		facts, warnings = _validated_facts(validation)
 		result["warnings"].extend(warnings)
@@ -135,8 +154,11 @@ def _analyze(client_id: str, documents: list[Any]) -> dict[str, Any]:
 		result["warnings"].append("One or more documents did not produce validated facts; comparison was not completed.")
 		return result
 
+	_report(progress, "comparing", f"{len(accounts)} account record(s)")
 	reconciliation = functions["reconcile"](validated, client, accounts)
 	raw_findings = reconciliation.get("findings", []) if isinstance(reconciliation, dict) else []
+	if raw_findings:
+		_report(progress, "explaining", f"{len(raw_findings)} finding(s)")
 	findings = [functions["explain"](finding) for finding in raw_findings]
 	result["findings"] = findings
 	result["status"] = reconciliation.get("status", "review_needed") if isinstance(reconciliation, dict) else "review_needed"
