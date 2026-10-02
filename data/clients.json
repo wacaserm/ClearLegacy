@@ -5,6 +5,20 @@
       "name": "Jordan Morgan",
       "currentSpouse": "Casey Morgan",
       "formerSpouse": "Taylor Morgan",
+      "state": "GA",
+      "trustName": "Morgan Family Trust",
+      "fiduciaries": [
+        {
+          "name": "Pat Morgan",
+          "role": "poa_agent",
+          "status": "deceased"
+        },
+        {
+          "name": "Casey Morgan",
+          "role": "executor",
+          "status": "living"
+        }
+      ],
       "accounts": [
         {
           "accountId": "DEMO-MORGAN-IRA",
@@ -25,6 +39,7 @@
         },
         {
           "accountId": "DEMO-MORGAN-BROKERAGE",
+          "registration": "Jordan Morgan, individual",
           "accountType": "brokerage",
           "designationType": "TOD",
           "sourceId": "MORGAN-ACCOUNT-SNAPSHOT-2026-09-28",
@@ -52,6 +67,14 @@
       "clientId": "patel",
       "name": "Sam Patel",
       "currentSpouse": "Lee Patel",
+      "state": "GA",
+      "fiduciaries": [
+        {
+          "name": "Lee Patel",
+          "role": "executor",
+          "status": "living"
+        }
+      ],
       "accounts": [
         {
           "accountId": "DEMO-PATEL-IRA",
