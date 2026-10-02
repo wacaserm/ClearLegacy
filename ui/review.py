@@ -1,5 +1,7 @@
 import streamlit as st
 
+from ui import compat
+
 
 DECISIONS = (
     ("Needs follow-up", "needs_follow_up"),
@@ -74,7 +76,7 @@ def render_history(local_history, persistent_history, persistence_error=None):
             continue
         rows.append(_audit_row(record, record.get("persistence", "Session-only")))
     if rows:
-        st.dataframe(rows, hide_index=True, width="stretch")
+        compat.dataframe(rows)
     else:
         st.info("No review decisions are available for this household yet.")
     st.caption("Session-only decisions last for this Streamlit session. Persistent status is shown only after the store confirms a write.")

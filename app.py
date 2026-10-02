@@ -1,6 +1,8 @@
 import streamlit as st
 
 from services import gui_adapter
+from ui.empty_states import render_analysis_state
+from ui.assistant import render_assistant
 from ui.findings import render_findings
 from ui.household import render_account_details, render_household
 from ui.review import render_history
@@ -20,10 +22,12 @@ from ui.state import (
     set_notice,
     sync_uploads,
 )
-from ui.empty_states import render_analysis_state
+from ui.theme import apply_theme
 from ui.uploads import render_analyze_button, render_uploads
 
-st.set_page_config(page_title="ClearLegacy", layout="wide")
+
+st.set_page_config(page_title="ClearLegacy | Advisor Review", layout="wide")
+apply_theme()
 
 backend = gui_adapter.backend_status()
 try:
@@ -31,6 +35,12 @@ try:
 except Exception as error:
     households = gui_adapter._fixture_households()
     st.warning(f"Stored client records are unavailable; using fictional fixture households: {error}")
+
+if not households:
+    st.title("ClearLegacy")
+    st.info("No client records or fictional household fixtures are available in this checkout.")
+    st.caption("The store contract is core.store.get_clients().")
+    st.stop()
 
 household_ids = [item["clientId"] for item in households]
 state = initialize_state(household_ids)
@@ -65,6 +75,7 @@ had_analysis = bool(workspace["current_analysis_id"])
 uploads_changed = sync_uploads(selected_client_id, upload_fingerprint)
 if uploads_changed and had_analysis:
     st.rerun()
+
 workspace = get_workspace(selected_client_id)
 with header_slot.container():
     render_household(client, workspace["status"])
@@ -86,7 +97,7 @@ if analyze_clicked:
     begin_analysis(selected_client_id)
     try:
         with st.spinner("Running the configured ClearLegacy analysis pipeline…"):
-            result = gui_adapter.analyze_documents(selected_client_id, documents, backend)
+            result = gui_adapter.analyze_documents(selected_client_id, documents, backend, previews)
         if not isinstance(result, dict):
             raise ValueError("The analysis pipeline returned an unsupported response.")
         allowed_statuses = {
@@ -109,6 +120,9 @@ if analyze_clicked:
             result.setdefault("clarificationQuestions", [])
             result.setdefault("warnings", [])
             result.setdefault("analysisId", None)
+            if result["findings"]:
+                with st.spinner("Writing a short case summary…"):
+                    result["summary"] = gui_adapter.summarize(client, result["findings"])
             complete_analysis(
                 selected_client_id,
                 result,
@@ -121,7 +135,7 @@ if analyze_clicked:
 
 render_account_details(accounts)
 
-findings_tab, history_tab = st.tabs(["Findings", "Review history"])
+findings_tab, ask_tab, history_tab = st.tabs(["Findings", "Ask ClearLegacy", "Review history"])
 review_event = None
 with findings_tab:
     current_analysis = get_current_analysis(selected_client_id)
@@ -147,6 +161,14 @@ with findings_tab:
             workspace,
             sample=source == "sample",
         )
+
+with ask_tab:
+    current_analysis = get_current_analysis(selected_client_id)
+    analysis_source = (
+        workspace["analyses"][workspace["current_analysis_id"]]["source"]
+        if current_analysis is not None else None
+    )
+    render_assistant(selected_client_id, client, accounts, current_analysis, workspace, analysis_source)
 
 with history_tab:
     persistent_history, history_error = gui_adapter.get_audit(selected_client_id, backend)
@@ -188,3 +210,5 @@ if review_event:
             f"{workspace['notice']} Attorney review is an internal flag; nothing is sent externally.",
         )
     st.rerun()
+
+st.caption("Findings support advisor review and are not legal advice.")

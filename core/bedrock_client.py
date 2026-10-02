@@ -15,13 +15,23 @@ from botocore.exceptions import BotoCoreError, ClientError, NoCredentialsError
 
 log = logging.getLogger(__name__)
 
-REGION = os.environ.get("AWS_REGION") or os.environ.get("AWS_DEFAULT_REGION") or "us-east-1"
+REGION = (
+    os.environ.get("BEDROCK_REGION")
+    or os.environ.get("AWS_REGION")
+    or os.environ.get("AWS_DEFAULT_REGION")
+    or "us-east-1"
+)
 MODEL_ID = os.environ.get("CLEARLEGACY_MODEL_ID", "us.anthropic.claude-sonnet-5")
 FAST_MODEL_ID = os.environ.get(
     "CLEARLEGACY_FAST_MODEL_ID", "us.anthropic.claude-haiku-4-5-20251001-v1:0"
 )
 
 CREDENTIALS_EXPIRED_MSG = "AWS credentials expired: refresh them from the workshop page"
+CREDENTIALS_MISSING_MSG = (
+    "AWS credentials not found: copy AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY and "
+    "AWS_SESSION_TOKEN from the workshop page into the terminal that starts the app"
+)
+_MODEL_UNAVAILABLE_CODES = {"AccessDeniedException", "ResourceNotFoundException"}
 _EXPIRED_CODES = {
     "ExpiredToken",
     "ExpiredTokenException",
@@ -36,8 +46,31 @@ class BedrockError(RuntimeError):
 
 
 class AWSCredentialsExpired(BedrockError):
+    def __init__(self, message: str = CREDENTIALS_EXPIRED_MSG):
+        super().__init__(message)
+
+
+class AWSCredentialsMissing(AWSCredentialsExpired):
+    """No credentials at all. Subclass so existing `except AWSCredentialsExpired` still catches it."""
+
     def __init__(self):
-        super().__init__(CREDENTIALS_EXPIRED_MSG)
+        super().__init__(CREDENTIALS_MISSING_MSG)
+
+
+def credentials_error(exc: Exception) -> AWSCredentialsExpired:
+    return AWSCredentialsMissing() if isinstance(exc, NoCredentialsError) else AWSCredentialsExpired()
+
+
+def _model_hint(exc: ClientError, model_id: str) -> str:
+    error = exc.response.get("Error", {})
+    code, message = error.get("Code", ""), error.get("Message", "")
+    lowered = message.lower()
+    if code in _MODEL_UNAVAILABLE_CODES or "model identifier" in lowered or ("model" in lowered and "access" in lowered):
+        return (
+            f" Model '{model_id}' isn't available to this AWS account in {REGION}. "
+            "Set CLEARLEGACY_MODEL_ID (or CLEARLEGACY_FAST_MODEL_ID) to a model enabled in the workshop account."
+        )
+    return ""
 
 
 def is_credentials_error(exc: Exception) -> bool:
@@ -94,8 +127,8 @@ def call_tool(
         )
     except (ClientError, NoCredentialsError) as exc:
         if is_credentials_error(exc):
-            raise AWSCredentialsExpired() from exc
-        raise BedrockError(f"Bedrock call to {model_id} failed: {exc}") from exc
+            raise credentials_error(exc) from exc
+        raise BedrockError(f"Bedrock call to {model_id} failed: {exc}.{_model_hint(exc, model_id)}") from exc
     except BotoCoreError as exc:  # timeouts, connection errors
         raise BedrockError(f"Could not reach Bedrock ({model_id}): {exc}") from exc
 

@@ -1,4 +1,4 @@
-streamlit
+streamlit>=1.46
 boto3
 pypdf
 python-docx

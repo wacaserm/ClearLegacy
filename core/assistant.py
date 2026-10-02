@@ -21,12 +21,14 @@ _EVIDENCE = CONFLICTS_SCHEMA["properties"]["findings"]["items"]["properties"]["e
 
 ANSWER_SCHEMA = {
     "type": "object",
+    # Citations and canAnswer come first so the model fills them before the
+    # free-text answer; text that leaks past the answer can't swallow them.
     "properties": {
+        "citations": {"type": "array", "items": _EVIDENCE},
         "canAnswer": {"type": "boolean", "description": "False if the provided data does not answer the question."},
         "answer": {"type": "string", "description": "At most 4 plain-English sentences."},
-        "citations": {"type": "array", "items": _EVIDENCE},
     },
-    "required": ["canAnswer", "answer", "citations"],
+    "required": ["citations", "canAnswer", "answer"],
 }
 
 UNSUPPORTED_ANSWER = (
@@ -72,16 +74,27 @@ def answer_question(
         f"<conversation>\n{json.dumps(turns, indent=2)}\n</conversation>\n\n"
         f"<question>{question}</question>\n\nAnswer using the answer_with_citations tool."
     )
-    result = call_tool(
-        system=ASSISTANT_PROMPT,
-        user_text=user_text,
-        tool_name="answer_with_citations",
-        tool_description="Answer the advisor's question with citations to document facts and account records.",
-        schema=ANSWER_SCHEMA,
-        model_id=MODEL_ID,
-        max_tokens=2048,
-    )
+    reply = None
+    for attempt in range(2):
+        result = call_tool(
+            system=ASSISTANT_PROMPT,
+            user_text=user_text,
+            tool_name="answer_with_citations",
+            tool_description="Answer the advisor's question with citations to document facts and account records.",
+            schema=ANSWER_SCHEMA,
+            model_id=MODEL_ID,
+            max_tokens=2048,
+        )
+        reply = _checked_reply(result, facts_list, client, accounts)
+        if reply is not None:
+            return reply
+        # Occasionally the model's citations get lost; one retry before withholding.
+        log.warning("Assistant answer had no verified support (attempt %d)", attempt + 1)
+    return {"answer": UNSUPPORTED_ANSWER, "canAnswer": False, "citations": [], "droppedCitations": 0}
 
+
+def _checked_reply(result: dict, facts_list, client, accounts) -> dict | None:
+    """Return a displayable reply, or None if the answer has no verified support."""
     raw_citations = result.get("citations") if isinstance(result.get("citations"), list) else []
     citations = [c for c in (verify_evidence(ev, facts_list, client, accounts) for ev in raw_citations) if c]
     dropped = len(raw_citations) - len(citations)
@@ -89,14 +102,9 @@ def answer_question(
         log.warning("Dropped %d unverified citation(s) from assistant answer", dropped)
 
     answer = _first_sentences(_strip_markup(result.get("answer")), 4)
-    # canAnswer occasionally gets swallowed into the answer text; fall back to evidence.
-    can_answer = result["canAnswer"] if isinstance(result.get("canAnswer"), bool) else bool(citations)
-    if can_answer and not citations:
-        # A factual answer with no verified support is withheld rather than shown.
-        return {"answer": UNSUPPORTED_ANSWER, "canAnswer": False, "citations": [], "droppedCitations": dropped}
-    return {
-        "answer": answer or UNSUPPORTED_ANSWER,
-        "canAnswer": can_answer and bool(answer),
-        "citations": citations,
-        "droppedCitations": dropped,
-    }
+    if citations and answer:
+        return {"answer": answer, "canAnswer": True, "citations": citations, "droppedCitations": dropped}
+    if result.get("canAnswer") is False and answer:
+        # The model explicitly says the data can't answer; show its explanation of what's missing.
+        return {"answer": answer, "canAnswer": False, "citations": [], "droppedCitations": dropped}
+    return None

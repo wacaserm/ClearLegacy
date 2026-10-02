@@ -1,5 +1,7 @@
 import streamlit as st
 
+from ui import compat
+
 
 STATUS_LABELS = {
     "not_analyzed": ("Not analyzed", "gray"),
@@ -19,13 +21,13 @@ def render_household(client, status):
         st.title(name)
     with badge:
         label, color = STATUS_LABELS.get(status, ("Not analyzed", "gray"))
-        st.markdown(f":{color}[**{label}**]")
+        compat.badge(label, color=color)
 
 
 def render_account_details(accounts):
     with st.expander("Account details", expanded=False):
         if accounts:
-            st.dataframe(accounts, hide_index=True, width="stretch")
+            compat.dataframe(accounts)
         else:
             st.info(
                 "No account summary is available from the configured store. "

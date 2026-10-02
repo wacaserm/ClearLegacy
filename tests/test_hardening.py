@@ -28,13 +28,13 @@ def test_malformed_facts_become_warnings(monkeypatch):
     assert out["facts"][1]["tier"] is None and out["facts"][1]["allocation"] is None
     assert set(out["facts"][0]) == {"field", "value", "location", "quote",
                                     "accountRef", "tier", "allocation", "relationship", "asOf"}
-    assert [w["code"] for w in out["warnings"]] == ["malformed_fact"] * 3
+    assert len(out["warnings"]) == 3 and all("Skipped malformed fact" in w for w in out["warnings"])
 
 
 def test_missing_fact_list_is_flagged(monkeypatch):
     monkeypatch.setattr(extract_mod, "call_tool", lambda **kw: {"docType": "will"})
     out = extract_mod.extract_facts(DOC)
-    assert out["facts"] == [] and out["warnings"][0]["code"] == "malformed_output"
+    assert out["facts"] == [] and "no fact list" in out["warnings"][0]
 
 
 class _FakeClient:
@@ -71,7 +71,10 @@ def test_string_tool_input_is_parsed_and_garbage_rejected(monkeypatch):
 def test_explain_trims_and_falls_back(monkeypatch):
     monkeypatch.setattr(explain_mod, "call_tool", lambda **kw: {
         "explanation": "One. Two. Three.", "recommendedAction": ""})
-    out = explain_mod.explain({"findingId": "F1", "title": "T", "evidence": []})
+    finding = {"findingId": "F1", "priority": "high", "title": "T", "evidence": [{"sourceType": "document"}]}
+    out = explain_mod.explain(finding)
+    # The pipeline replaces each finding with explain()'s result, so nothing may be lost.
+    assert {k: out[k] for k in finding} == finding
     assert out["explanation"] == "One. Two."
     assert out["recommendedAction"] == explain_mod.DEFAULT_ACTION
 
@@ -110,3 +113,65 @@ def test_assistant_strips_leaked_markup_and_infers_can_answer(monkeypatch):
         "citations": [_ev_doc("Thomas Johnson, as Executor")]})
     out = assistant_mod.answer_question("Who is executor?", FACTS, CLIENT, [])
     assert out["answer"] == "Thomas Johnson is the executor." and out["canAnswer"] is True
+
+
+def test_assistant_withholds_uncited_answer_when_can_answer_missing(monkeypatch):
+    monkeypatch.setattr(assistant_mod, "call_tool", lambda **kw: {
+        "answer": "Taylor Morgan is the beneficiary.</answer><parameter name=\"citations\">[...]", "citations": []})
+    out = assistant_mod.answer_question("Who?", FACTS, CLIENT, [])
+    assert out["answer"] == assistant_mod.UNSUPPORTED_ANSWER and out["citations"] == []
+
+
+def test_assistant_shows_explicit_cannot_answer():
+    import core.assistant as a
+    a_call = a.call_tool
+    try:
+        a.call_tool = lambda **kw: {"citations": [], "canAnswer": False, "answer": "The records don't include an SSN."}
+        out = a.answer_question("SSN?", FACTS, CLIENT, [])
+    finally:
+        a.call_tool = a_call
+    assert out == {"answer": "The records don't include an SSN.", "canAnswer": False, "citations": [], "droppedCitations": 0}
+
+
+def test_missing_credentials_message_differs_from_expired(monkeypatch):
+    from botocore.exceptions import NoCredentialsError
+
+    class _NoCreds:
+        def converse(self, **kw):
+            raise NoCredentialsError()
+
+    monkeypatch.setattr(bc, "get_client", lambda service="bedrock-runtime": _NoCreds())
+    with pytest.raises(bc.AWSCredentialsExpired) as info:  # still catchable as before
+        bc.call_tool("s", "u", "t", "d", {"type": "object"})
+    assert isinstance(info.value, bc.AWSCredentialsMissing) and "not found" in str(info.value)
+
+
+def test_unavailable_model_names_the_setting(monkeypatch):
+    from botocore.exceptions import ClientError
+
+    class _BadModel:
+        def converse(self, **kw):
+            raise ClientError({"Error": {"Code": "ValidationException",
+                                         "Message": "The provided model identifier is invalid."}}, "Converse")
+
+    monkeypatch.setattr(bc, "get_client", lambda service="bedrock-runtime": _BadModel())
+    with pytest.raises(bc.BedrockError, match="CLEARLEGACY_MODEL_ID"):
+        bc.call_tool("s", "u", "t", "d", {"type": "object"})
+
+
+def test_assistant_retries_once_when_citations_are_lost(monkeypatch):
+    replies = iter([
+        {"answer": "Thomas Johnson is the executor.", "citations": []},  # citations lost
+        {"citations": [_ev_doc("Thomas Johnson, as Executor")], "canAnswer": True, "answer": "Thomas Johnson is the executor."},
+    ])
+    calls = []
+    monkeypatch.setattr(assistant_mod, "call_tool", lambda **kw: calls.append(1) or next(replies))
+    out = assistant_mod.answer_question("Who?", FACTS, CLIENT, [])
+    assert len(calls) == 2 and out["canAnswer"] and len(out["citations"]) == 1
+
+
+def test_assistant_gives_up_after_one_retry(monkeypatch):
+    calls = []
+    monkeypatch.setattr(assistant_mod, "call_tool", lambda **kw: calls.append(1) or {"answer": "Uncited claim.", "citations": []})
+    out = assistant_mod.answer_question("Who?", FACTS, CLIENT, [])
+    assert len(calls) == 2 and out["answer"] == assistant_mod.UNSUPPORTED_ANSWER
