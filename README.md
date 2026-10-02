@@ -73,8 +73,9 @@ aws sts get-caller-identity --region us-east-1
 python -m streamlit run app.py
 ```
 
-The Bedrock adapter uses `amazon.nova-micro-v1:0` by default. An enabled model
-or inference profile can be selected with `BEDROCK_MODEL_ID`. Never commit AWS
+Bedrock extraction is done by `core/extract.py` (Role 1), which uses Claude
+Sonnet 5 by default. Override the models with `CLEARLEGACY_MODEL_ID` and
+`CLEARLEGACY_FAST_MODEL_ID` (see "Role 1: AI extraction" below). Never commit AWS
 credentials, `.env` files, `.aws/`, or Streamlit secrets.
 
 If STS or Bedrock reports an invalid security token, refresh the temporary
