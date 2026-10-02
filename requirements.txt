@@ -1,5 +1,6 @@
 streamlit
 boto3
 pypdf
+python-docx
 reportlab
 pytest

@@ -3,6 +3,7 @@ __pycache__/
 *.py[codz]
 *$py.class
 
+
 # C extensions
 *.so
 
@@ -150,12 +151,18 @@ activemq-data/
 # Environments
 .env
 .envrc
-.venv
+.venv/
 env/
 venv/
 ENV/
 env.bak/
 venv.bak/
+
+# Local credentials and runtime data
+.aws/
+.streamlit/secrets.toml
+data/runtime/
+data/documents/
 
 # Spyder project settings
 .spyderproject
