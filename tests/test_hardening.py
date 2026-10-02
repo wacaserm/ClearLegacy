@@ -131,3 +131,29 @@ def test_assistant_shows_explicit_cannot_answer():
     finally:
         a.call_tool = a_call
     assert out == {"answer": "The records don't include an SSN.", "canAnswer": False, "citations": [], "droppedCitations": 0}
+
+
+def test_missing_credentials_message_differs_from_expired(monkeypatch):
+    from botocore.exceptions import NoCredentialsError
+
+    class _NoCreds:
+        def converse(self, **kw):
+            raise NoCredentialsError()
+
+    monkeypatch.setattr(bc, "get_client", lambda service="bedrock-runtime": _NoCreds())
+    with pytest.raises(bc.AWSCredentialsExpired) as info:  # still catchable as before
+        bc.call_tool("s", "u", "t", "d", {"type": "object"})
+    assert isinstance(info.value, bc.AWSCredentialsMissing) and "not found" in str(info.value)
+
+
+def test_unavailable_model_names_the_setting(monkeypatch):
+    from botocore.exceptions import ClientError
+
+    class _BadModel:
+        def converse(self, **kw):
+            raise ClientError({"Error": {"Code": "ValidationException",
+                                         "Message": "The provided model identifier is invalid."}}, "Converse")
+
+    monkeypatch.setattr(bc, "get_client", lambda service="bedrock-runtime": _BadModel())
+    with pytest.raises(bc.BedrockError, match="CLEARLEGACY_MODEL_ID"):
+        bc.call_tool("s", "u", "t", "d", {"type": "object"})

@@ -21,7 +21,30 @@ Run this on your first setup or whenever `requirements.txt` changes:
 python -m pip install -r requirements.txt
 ```
 
-### 3. Start the app
+### 3. Set your workshop AWS credentials
+
+Copy the three values from the workshop page into the **same terminal** you will
+start the app from. They expire, so repeat this step when you get fresh ones.
+
+```powershell
+$env:AWS_ACCESS_KEY_ID="..."
+$env:AWS_SECRET_ACCESS_KEY="..."
+$env:AWS_SESSION_TOKEN="..."
+$env:AWS_REGION="us-east-1"
+```
+
+On macOS or Linux use `export AWS_ACCESS_KEY_ID="..."` and so on.
+
+### 4. Check your setup
+
+```powershell
+python scripts/check_setup.py
+```
+
+It checks Python, packages, client records, DOCX reading, AWS credentials, and
+access to both Bedrock models, and tells you how to fix anything that fails.
+
+### 5. Start the app
 
 ```powershell
 python -m streamlit run app.py
@@ -32,15 +55,23 @@ Open that URL in your browser if it does not open automatically.
 
 Keep the terminal running while using the app. To stop it, press **Ctrl+C**.
 
-### Using the starter app
+### Using the app
 
-1. Review or edit the sample client planning summary.
-2. Review or edit the beneficiary record.
-3. Click **Analyze records**.
+1. Choose a household in the sidebar (Jordan Morgan, Sam Patel, or Robin Rivera).
+2. Upload that household's planning summary and account records from
+   `sample_data/` (PDF or DOCX; upload one format of each, not both).
+3. Click **Analyze documents**. Bedrock is only called when you click, and the
+   result is kept for the session (about 30 seconds per household).
+4. Review findings with their document and account evidence, then confirm,
+   dismiss, or flag each one for attorney review.
+5. Use the **Ask ClearLegacy** tab for follow-up questions. Answers cite their
+   sources and are read-only.
 
-The app sends the two summaries to Amazon Bedrock and displays the extracted,
-source-grounded facts. Full reconciliation remains dependent on the validation,
-rules, and explanation modules.
+Expected results: Morgan has 2 findings, Patel has no discrepancies, and Rivera
+needs more information.
+
+If analysis fails, the app shows why: missing or expired credentials, or a
+model that isn't enabled (set `CLEARLEGACY_MODEL_ID` to change it).
 
 ## Role 3: AWS and integration
 
@@ -225,9 +256,9 @@ The extra keys (`accountRef`, `tier`, `allocation`, `relationship`, `asOf`) are 
 
 ### Configuration and limits
 
-- AWS credentials come from environment variables only (region `us-east-1`). Never commit them.
+- AWS credentials come from environment variables only. Region comes from `BEDROCK_REGION`, `AWS_REGION` or `AWS_DEFAULT_REGION` (default `us-east-1`). Never commit credentials.
 - `CLEARLEGACY_MODEL_ID` (default `us.anthropic.claude-sonnet-5`) and `CLEARLEGACY_FAST_MODEL_ID` (default `us.anthropic.claude-haiku-4-5-20251001-v1:0`).
-- Expired or missing credentials raise `AWSCredentialsExpired`: "AWS credentials expired: refresh them from the workshop page".
+- Expired credentials raise `AWSCredentialsExpired` ("AWS credentials expired: refresh them from the workshop page"). Missing credentials raise its subclass `AWSCredentialsMissing`, which says which variables to set. A model the account can't use gives a `BedrockError` that names `CLEARLEGACY_MODEL_ID`.
 - Cost per call: one Bedrock call per document extraction, one per `explain`, one for `find_additional_conflicts`, one for `summarize_case`, and one per `answer_question`. Each document takes about 6–11 seconds and a few thousand tokens.
 - Workshop quotas are far above this (Sonnet 5: 6M tokens per minute; Haiku 4.5: 10,000 requests per minute; Textract: 25 per second).
 - The client retries throttled calls with adaptive backoff (up to 5 attempts).

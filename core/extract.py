@@ -15,8 +15,8 @@ from pypdf import PdfReader
 
 from core.bedrock_client import (
     MODEL_ID,
-    AWSCredentialsExpired,
     call_tool,
+    credentials_error,
     get_client,
     is_credentials_error,
 )
@@ -65,7 +65,7 @@ def _textract_single_page(data: bytes) -> str:
         resp = get_client("textract").detect_document_text(Document={"Bytes": data})
     except (ClientError, NoCredentialsError) as exc:
         if is_credentials_error(exc):
-            raise AWSCredentialsExpired() from exc
+            raise credentials_error(exc) from exc
         raise
     return "\n".join(b["Text"] for b in resp.get("Blocks", []) if b["BlockType"] == "LINE")
 
