@@ -71,3 +71,13 @@ def test_labeled_value_needs_exact_match():
     assert v(_acct_ev("A", "todBeneficiaries", "Linda Johnson, recorded 2009-05-11"), {}, accounts)
     assert not v(_acct_ev("A", "todBeneficiaries", "Linda Johnson, recorded 2010-01-01"), {}, accounts)
     assert not v(_acct_ev("A", "todBeneficiaries", "Linda Johnson, former spouse Carol"), {}, accounts)
+
+
+def test_numeric_percentages_in_team_record_format():
+    client = {"clientId": "morgan", "formerSpouse": "Taylor Morgan"}
+    accounts = [{"accountId": "DEMO-MORGAN-IRA", "primaryBeneficiaries": [
+        {"name": "Taylor Morgan", "relationship": "former spouse", "percentage": 100}]}]
+    v = explain_mod.verify_account_evidence
+    assert v(_acct_ev("DEMO-MORGAN-IRA", "primaryBeneficiaries", "Taylor Morgan, former spouse, 100%"), client, accounts)
+    assert not v(_acct_ev("DEMO-MORGAN-IRA", "primaryBeneficiaries", "Taylor Morgan, 50%"), client, accounts)
+    assert v(_acct_ev("morgan", "formerSpouse", "Taylor Morgan"), client, accounts)
