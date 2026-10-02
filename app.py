@@ -33,8 +33,8 @@ backend = gui_adapter.backend_status()
 try:
     households = gui_adapter.get_households(backend)
 except Exception as error:
-    households = []
-    st.error(f"Household records could not be loaded: {error}")
+    households = gui_adapter._fixture_households()
+    st.warning(f"Stored client records are unavailable; using fictional fixture households: {error}")
 
 if not households:
     st.title("ClearLegacy")
