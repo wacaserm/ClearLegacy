@@ -1,12 +1,11 @@
-"""Document intelligence: read estate documents and extract verifiable facts.
+"""Document intelligence: extract quoted, located facts from a document with Bedrock.
 
-The model only extracts what a document states. Every fact carries a page number
-and a verbatim quote, and validate_facts() drops anything whose quote cannot be
-found in the source text. Comparing facts against accounts is done by plain
-Python rules in core/rules.py, not here.
+Owner: Role 1. Input is the shared document shape from core/document_reader.py
+(Role 3). The model only records what the document states; every fact carries a
+location and verbatim quote, and core/validation.validate_facts() excludes any
+fact whose quote is not found. Comparison against accounts happens in core/rules.py.
 """
 
-import copy
 import logging
 import re
 from pathlib import Path
@@ -21,16 +20,32 @@ from core.bedrock_client import (
     get_client,
     is_credentials_error,
 )
+from core.validation import validate_facts
 
 log = logging.getLogger(__name__)
 
-DOC_TYPES = ["will", "trust", "poa", "beneficiary_form", "other"]
-ROLES = ["beneficiary", "executor", "trustee", "successor_trustee", "poa_agent", "guardian", "other"]
+PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 
-_PAGE_MARKER = re.compile(r"^=== PAGE (\d+) ===[ \t]*$", re.MULTILINE)
+DOC_TYPES = [
+    "will", "trust", "poa", "planning_summary", "account_records", "beneficiary_form", "other",
+]
+
+# Extraction field vocabulary agreed with Role 2 (rules) — see README and prompts/extraction.txt.
+FACT_FIELDS = [
+    "document_id", "document_date", "snapshot_date", "governing_state", "client_name",
+    "family_member", "intended_beneficiary", "intentional_exclusion", "residuary_beneficiary",
+    "executor", "alternate_executor", "trustee", "successor_trustee",
+    "poa_agent", "successor_poa_agent", "guardian",
+    "trust_owned_account", "account_beneficiary", "account_registration", "account_owner",
+    "missing_information", "unspecified_intention",
+]
 
 
 # --------------------------------------------------------------------------- reading
+# Stand-in readers for local runs and tests. The app pipeline should use
+# core/document_reader.read_document (Role 3), which returns the same shape.
+
+_PAGE_MARKER = re.compile(r"^=== PAGE (\d+) ===[ \t]*$", re.MULTILINE)
 
 
 def read_txt(path) -> list[dict]:
@@ -39,7 +54,6 @@ def read_txt(path) -> list[dict]:
     parts = _PAGE_MARKER.split(text)
     if len(parts) == 1:
         return [{"page": 1, "text": text.strip()}]
-    # parts = [preamble, "1", page1_text, "2", page2_text, ...]
     return [
         {"page": int(parts[i]), "text": parts[i + 1].strip()}
         for i in range(1, len(parts), 2)
@@ -57,15 +71,14 @@ def _textract_single_page(data: bytes) -> str:
 
 
 def read_pdf(path) -> list[dict]:
-    """Return [{"page": 1-based int, "text": str}] for a PDF or page-marked .txt file.
+    """Return [{"page": int, "text": str}] for a PDF or page-marked .txt file.
 
-    Scanned pages with no text layer are OCR'd with Textract only when the PDF
-    has a single page; otherwise their text is "" and a warning is logged.
+    A scanned single-page PDF is OCR'd with Textract; scanned pages in longer
+    PDFs are left "" with a warning (multi-page OCR is future work).
     """
     path = Path(path)
     if path.suffix.lower() == ".txt":
         return read_txt(path)
-
     reader = PdfReader(str(path))
     pages = [
         {"page": i, "text": (page.extract_text() or "").strip()}
@@ -76,192 +89,106 @@ def read_pdf(path) -> list[dict]:
         log.info("%s has no text layer; running Textract OCR", path.name)
         pages[0]["text"] = _textract_single_page(path.read_bytes()).strip()
     elif empty:
-        log.warning(
-            "%s: pages %s have no extractable text (scanned?). Multi-page OCR "
-            "is not supported yet; those pages are left empty.",
-            path.name,
-            empty,
-        )
+        log.warning("%s: pages %s have no extractable text; left empty", path.name, empty)
     return pages
+
+
+def load_document(path, doc_type: str | None = None, source_id: str | None = None) -> dict:
+    """Build the shared document shape from a local .pdf or .txt file."""
+    path = Path(path)
+    return {
+        "sourceId": source_id or re.sub(r"[^a-z0-9]+", "-", path.stem.lower()).strip("-"),
+        "filename": path.name,
+        "docType": doc_type,
+        "sections": [{"location": f"page {p['page']}", "text": p["text"]} for p in read_pdf(path)],
+    }
 
 
 # --------------------------------------------------------------------------- extraction
 
-_SOURCED = {"page": {"type": ["integer", "null"]}, "quote": {"type": ["string", "null"]}}
+_NULLABLE = {"type": ["string", "null"]}
 
 FACTS_SCHEMA = {
     "type": "object",
     "properties": {
         "docType": {"type": "string", "enum": DOC_TYPES},
-        "dateSigned": {
-            "type": "object",
-            "description": "Date the document was signed/executed. All fields null if absent.",
-            "properties": {
-                "value": {"type": ["string", "null"], "description": "YYYY-MM-DD or null"},
-                **_SOURCED,
-            },
-            "required": ["value", "page", "quote"],
-        },
-        "governingState": {
-            "type": "object",
-            "description": "State whose law governs the document. All fields null if absent.",
-            "properties": {
-                "value": {"type": ["string", "null"], "description": "Two-letter US state code or null"},
-                **_SOURCED,
-            },
-            "required": ["value", "page", "quote"],
-        },
-        "people": {
+        "facts": {
             "type": "array",
             "items": {
                 "type": "object",
                 "properties": {
-                    "name": {"type": "string"},
-                    "relationship": {"type": "string", "description": "As stated, e.g. 'daughter'; '' if not stated"},
-                    "role": {"type": "string", "enum": ROLES},
-                    "share": {"type": ["string", "null"], "description": "e.g. 'equal third' or '100%'; null if not stated"},
-                    "page": {"type": "integer"},
-                    "quote": {"type": "string"},
+                    "field": {"type": "string", "enum": FACT_FIELDS},
+                    "value": {"type": "string", "description": "Name, date (YYYY-MM-DD), state code, or short statement."},
+                    "location": {"type": "string", "description": "Copied exactly from the section marker, e.g. 'page 1'."},
+                    "quote": {"type": "string", "description": "Verbatim supporting text from that section, under 40 words."},
+                    "accountRef": {**_NULLABLE, "description": "Account reference as written, e.g. 'DEMO-MORGAN-IRA'."},
+                    "tier": {"type": ["string", "null"], "enum": ["primary", "contingent", None]},
+                    "allocation": {**_NULLABLE, "description": "e.g. '100%', '50%', 'equal shares'."},
+                    "relationship": {**_NULLABLE, "description": "As stated, e.g. 'daughter', 'former spouse'."},
+                    "asOf": {**_NULLABLE, "description": "Date the fact was recorded or updated, YYYY-MM-DD, if stated."},
                 },
-                "required": ["name", "relationship", "role", "share", "page", "quote"],
-            },
-        },
-        "assets": {
-            "type": "array",
-            "items": {
-                "type": "object",
-                "properties": {
-                    "description": {"type": "string"},
-                    "disposition": {"type": "string", "description": "What the document says happens to it"},
-                    "page": {"type": "integer"},
-                    "quote": {"type": "string"},
-                },
-                "required": ["description", "disposition", "page", "quote"],
+                "required": [
+                    "field", "value", "location", "quote",
+                    "accountRef", "tier", "allocation", "relationship", "asOf",
+                ],
             },
         },
     },
-    "required": ["docType", "dateSigned", "governingState", "people", "assets"],
+    "required": ["docType", "facts"],
 }
 
-EXTRACT_SYSTEM = """You extract facts from estate planning documents (wills, trusts, powers of attorney, beneficiary forms) for a financial advisor's review tool.
-
-Rules:
-- Extract only what the document explicitly states. Never infer, assume, or fill gaps from general knowledge.
-- Every fact must cite the page number shown in the [PAGE N] marker where it appears, and a short verbatim quote from that page (under 40 words) that supports it. Copy the quote character-for-character; do not paraphrase, abbreviate, or use ellipses.
-- Use null when a value is absent. If the signing date or governing state is not stated, set value, page and quote all to null.
-- List each person once per role. A person named both as beneficiary and executor gets two entries.
-- Assets: include only specific assets or accounts the document mentions by description, with what the document says happens to them.
-- You are not giving legal advice or judging validity. Just record what the text says."""
+EXTRACTION_PROMPT = (PROMPTS / "extraction.txt").read_text(encoding="utf-8")
 
 
-def _format_pages(pages: list[dict]) -> str:
-    return "\n\n".join(f"[PAGE {p['page']}]\n{p['text']}" for p in pages)
+def _format_sections(sections: list[dict]) -> str:
+    return "\n\n".join(f"[location: {s['location']}]\n{s['text']}" for s in sections)
 
 
-def extract_facts(pages: list[dict], doc_type: str) -> dict:
-    """Ask the main model for structured, quoted facts from the document pages."""
+def extract_facts(document: dict) -> dict:
+    """Return {sourceId, docType, facts: [...], warnings: [...]} for a document.
+
+    Facts are not yet quote-validated; run core.validation.validate_facts next.
+    """
+    source_id = document.get("sourceId") or document.get("filename") or "document"
+    sections = [s for s in document.get("sections", []) if (s.get("text") or "").strip()]
+    if not sections:
+        return {
+            "sourceId": source_id,
+            "docType": document.get("docType") or "other",
+            "facts": [],
+            "warnings": [
+                {
+                    "code": "no_readable_text",
+                    "message": f"No readable text in {document.get('filename') or source_id}. "
+                    "Upload a selectable-text file or run OCR.",
+                }
+            ],
+        }
+
+    label = document.get("docType") or "not specified"
     user_text = (
-        f"The uploader labeled this document as: {doc_type}\n\n"
-        f"<document>\n{_format_pages(pages)}\n</document>\n\n"
+        f"Uploader's document type label: {label}\n\n"
+        f"<document>\n{_format_sections(sections)}\n</document>\n\n"
         "Record the facts using the record_document_facts tool."
     )
-    return call_tool(
-        system=EXTRACT_SYSTEM,
+    result = call_tool(
+        system=EXTRACTION_PROMPT,
         user_text=user_text,
         tool_name="record_document_facts",
-        tool_description="Record facts stated in an estate document, each with its page and verbatim quote.",
+        tool_description="Record facts stated in a document, each with its location and verbatim quote.",
         schema=FACTS_SCHEMA,
         model_id=MODEL_ID,
-        max_tokens=4096,
+        max_tokens=8192,
     )
+    return {
+        "sourceId": source_id,
+        "docType": document.get("docType") or result.get("docType") or "other",
+        "facts": [f for f in result.get("facts", []) if isinstance(f, dict)],
+        "warnings": [],
+    }
 
 
-# --------------------------------------------------------------------------- validation
-
-_QUOTE_CHARS = str.maketrans({"‘": "'", "’": "'", "“": '"', "”": '"', "–": "-", "—": "-"})
-
-
-def _normalize(text: str) -> str:
-    text = text.translate(_QUOTE_CHARS).lower()
-    return re.sub(r"\s+", " ", text).strip()
-
-
-_ELLIPSIS = re.compile(r"\s*(?:\.\s*\.\s*\.|…)\s*")
-
-
-def _fragments(quote: str) -> list[str]:
-    """Split a quote on ellipses; every fragment must be verbatim document text."""
-    parts = [_normalize(p).strip(" \"'") for p in _ELLIPSIS.split(_normalize(quote))]
-    return [p for p in parts if p]
-
-
-def _contains_in_order(text: str, fragments: list[str]) -> bool:
-    pos = 0
-    for frag in fragments:
-        pos = text.find(frag, pos)
-        if pos < 0:
-            return False
-        pos += len(frag)
-    return True
-
-
-def _locate(quote: str, claimed_page, pages: list[dict]):
-    """Return the page number containing the quote, preferring the claimed page; None if absent.
-
-    A quote shortened with "..." matches only if every fragment appears, in order, on one page.
-    """
-    fragments = _fragments(quote)
-    if not fragments:
-        return None
-    by_page = {p["page"]: _normalize(p["text"]) for p in pages}
-    if claimed_page in by_page and _contains_in_order(by_page[claimed_page], fragments):
-        return claimed_page
-    for page_num, text in by_page.items():
-        if _contains_in_order(text, fragments):
-            return page_num
-    return None
-
-
-def validate_facts(facts: dict, pages: list[dict]) -> dict:
-    """Keep only facts whose quote appears in the page text; fix wrong page numbers.
-
-    Returns a copy of facts with a "dropped" list of {"field", "item", "reason"}.
-    Dropped scalar fields (dateSigned, governingState) are reset to all-null.
-    """
-    out = copy.deepcopy(facts)
-    dropped = list(out.get("dropped", []))
-
-    def check(field: str, item: dict) -> bool:
-        found = _locate(item.get("quote") or "", item.get("page"), pages)
-        if found is None:
-            dropped.append({"field": field, "item": item, "reason": "quote not found in document"})
-            log.warning("Dropped %s (quote not found): %r", field, item.get("quote"))
-            return False
-        if found != item.get("page"):
-            log.info("Corrected %s page %s -> %s", field, item.get("page"), found)
-            item["page"] = found
-        return True
-
-    for field in ("dateSigned", "governingState"):
-        item = out.get(field)
-        if not item or (item.get("value") is None and not item.get("quote")):
-            out[field] = {"value": None, "page": None, "quote": None}
-        elif not check(field, item):
-            out[field] = {"value": None, "page": None, "quote": None}
-
-    for field in ("people", "assets"):
-        out[field] = [item for item in out.get(field, []) if check(field, item)]
-
-    out["dropped"] = dropped
-    return out
-
-
-def extract_document(path, doc_type: str) -> dict:
-    """Read a document, extract facts with the model, and validate every quote."""
-    path = Path(path)
-    pages = read_pdf(path)
-    if not any(p["text"] for p in pages):
-        raise ValueError(f"{path.name}: no readable text found")
-    facts = validate_facts(extract_facts(pages, doc_type), pages)
-    facts["source"] = path.name
-    return facts
+def extract_document(path, doc_type: str | None = None, source_id: str | None = None) -> dict:
+    """Convenience for local runs: load, extract, and validate one file."""
+    document = load_document(path, doc_type, source_id)
+    return validate_facts(extract_facts(document), document)

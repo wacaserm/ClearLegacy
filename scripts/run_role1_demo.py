@@ -1,7 +1,9 @@
-"""Role 1 demo: extract facts from every fixture, explain a sample finding, run the AI conflict pass.
+"""Role 1 demo: extract and validate facts from fixtures and sample households,
+explain a sample finding, then run the optional AI conflict pass on Johnson.
 
 Usage: python scripts/run_role1_demo.py
 Requires AWS credentials in environment variables (region us-east-1).
+About 13 Bedrock calls per run.
 """
 
 import json
@@ -18,14 +20,18 @@ from core.explain import explain, find_additional_conflicts  # noqa: E402
 from core.extract import extract_document  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures"
-DOCS = [
-    ("johnson_will.txt", "will"),
-    ("johnson_trust.txt", "trust"),
-    ("johnson_poa.txt", "poa"),
-    ("clean_will.txt", "will"),
-    ("pdf/johnson_will.pdf", "will"),
-    ("pdf/johnson_trust.pdf", "trust"),
-    ("pdf/johnson_poa.pdf", "poa"),
+SAMPLES = ROOT / "sample_data"
+
+JOHNSON = [
+    (FIXTURES / "pdf" / "johnson_will.pdf", "will", "johnson-will-2019"),
+    (FIXTURES / "pdf" / "johnson_trust.pdf", "trust", "johnson-trust-2021"),
+    (FIXTURES / "pdf" / "johnson_poa.pdf", "poa", "johnson-poa-2014"),
+    (FIXTURES / "pdf" / "johnson_intentions.pdf", "planning_summary", "johnson-plan-2026"),
+]
+OTHERS = [(FIXTURES / "clean_will.txt", "will", "lopez-will-2023")] + [
+    (path, "account_records" if path.stem == "account_records" else "planning_summary",
+     f"{path.parent.name.split('_')[1]}-{path.stem.replace('_', '-')}")
+    for path in sorted(SAMPLES.glob("*/*.pdf"))
 ]
 
 
@@ -46,47 +52,42 @@ def main():
     logging.getLogger("botocore").setLevel(logging.WARNING)
 
     results = {}
-    for rel, doc_type in DOCS:
-        facts = timed(f"extract {rel}", extract_document, FIXTURES / rel, doc_type)
-        results[rel] = facts
-        show(f"{rel} facts", {k: v for k, v in facts.items() if k != "dropped"})
-        show(f"{rel} dropped", facts["dropped"])
+    for path, doc_type, source_id in JOHNSON + OTHERS:
+        facts = timed(f"extract {path.relative_to(ROOT)}", extract_document, path, doc_type, source_id)
+        results[source_id] = facts
+        show(f"{source_id} facts", facts["facts"])
+        show(f"{source_id} warnings", facts["warnings"])
 
     data = json.loads((FIXTURES / "johnson_accounts.json").read_text())
-    will = results["johnson_will.txt"]
-    residuary = next(
-        (a for a in will["assets"] if "brokerage" in a["description"].lower()), None
+    plan = results["johnson-plan-2026"]
+    intention = next(
+        (f for f in plan["facts"] if f["field"] == "intended_beneficiary" and "4471" in (f.get("accountRef") or "")),
+        None,
     )
     sample = {
-        "findingId": "F-001",
-        "severity": "high",
-        "title": "Will splits estate among three children, but brokerage TOD names ex-wife",
+        "findingId": "F1",
+        "priority": "high",
+        "title": "Stated intention for DEMO-JOHNSON-4471 differs from its TOD designation",
         "evidence": [
             {
-                "source": "document",
-                "docType": "will",
-                "page": residuary["page"] if residuary else 1,
-                "quote": residuary["quote"] if residuary
-                else "My brokerage account at LPL Financial shall pass as part of my residuary estate.",
+                "sourceType": "document",
+                "sourceId": "johnson-plan-2026",
+                "location": intention["location"] if intention else "page 1",
+                "quote": intention["quote"] if intention else
+                "For brokerage account DEMO-JOHNSON-4471, I want my three children, Emily, David and Sarah, to receive equal shares.",
             },
             {
-                "source": "document",
-                "docType": "will",
-                "page": 1,
-                "quote": "in equal shares to my children, Emily Johnson, David Johnson and Sarah Johnson",
-            },
-            {
-                "source": "account",
-                "docType": None,
-                "page": None,
-                "quote": "Brokerage ...4471 TOD beneficiary: Linda Johnson (ex-wife), set 2009",
+                "sourceType": "account",
+                "sourceId": "DEMO-JOHNSON-4471",
+                "field": "todBeneficiaries",
+                "value": "Linda Johnson 100%, recorded 2009-05-11",
             },
         ],
     }
     show("sample finding", sample)
     show("explain(sample)", timed("explain (fast model)", explain, sample))
 
-    johnson = [results[k] for k in ("johnson_will.txt", "johnson_trust.txt", "johnson_poa.txt")]
+    johnson = [results[source_id] for _, _, source_id in JOHNSON]
     extra = timed(
         "find_additional_conflicts", find_additional_conflicts, johnson, data["client"], data["accounts"]
     )

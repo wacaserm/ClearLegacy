@@ -1,21 +1,17 @@
 === PAGE 1 ===
-DURABLE POWER OF ATTORNEY
+Durable Power of Attorney Summary
+ClearLegacy fictional demonstration household
+FICTIONAL DEMO RECORD - NOT REAL CLIENT DATA
+Document ID: JOHNSON-POA-2014
 
-I, Robert James Johnson, of San Diego County, California, hereby appoint my brother, Thomas Johnson, as my attorney-in-fact (my "Agent") to act for me in any lawful way with respect to the following matters: banking and brokerage transactions, retirement plans, real property, tax matters, and claims and litigation.
+Principal: Robert James Johnson, of San Diego County, California.
 
-DURABILITY. This power of attorney shall not be affected by my subsequent incapacity. It is effective immediately and shall continue until revoked by me in writing.
+Agent: "I hereby appoint my brother, Thomas Johnson, as my attorney-in-fact to act for me with respect to banking and brokerage transactions, retirement plans, real property, and tax matters."
 
-SUCCESSOR AGENT. No successor agent is named.
+Successor agent: No successor agent is named.
 
-THIRD-PARTY RELIANCE. Any third party who receives a copy of this document may rely on it until the third party has actual knowledge of its revocation.
+Durability: "This power of attorney shall not be affected by my subsequent incapacity."
 
-This document is governed by the laws of the State of California.
+Governing law: California. Signed on September 9, 2014.
 
-Signed on September 9, 2014.
-
-/s/ Robert James Johnson
-Robert James Johnson, Principal
-
-State of California, County of San Diego
-Subscribed and acknowledged before me on September 9, 2014.
-/s/ Gerald Moss, Notary Public
+This is a fictional summary for demonstration. It is not a legal document and has not been reviewed by an attorney.

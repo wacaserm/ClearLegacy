@@ -1,34 +1,18 @@
 === PAGE 1 ===
-THE ROBERT J. JOHNSON REVOCABLE LIVING TRUST
-Dated June 2, 2021
+Revocable Trust Summary
+ClearLegacy fictional demonstration household
+FICTIONAL DEMO RECORD - NOT REAL CLIENT DATA
+Document ID: JOHNSON-TRUST-2021
 
-DECLARATION OF TRUST
-Robert J. Johnson, as Settlor and as Trustee, hereby declares that he holds and will hold the property described in Schedule A, and any property later transferred to the Trustee, in trust on the terms set forth in this instrument. This trust shall be known as THE ROBERT J. JOHNSON REVOCABLE LIVING TRUST.
+Trust name: The Robert J. Johnson Revocable Living Trust, dated June 2, 2021.
 
-ARTICLE 1. REVOCABILITY
-During the Settlor's lifetime, the Settlor may revoke or amend this trust, in whole or in part, by a writing signed by the Settlor and delivered to the Trustee.
+Trustees: "Robert J. Johnson shall serve as the initial Trustee. Upon the death, resignation, or incapacity of Robert J. Johnson, his daughter Emily Johnson shall serve as successor trustee."
 
-ARTICLE 2. TRUSTEES
-Robert J. Johnson shall serve as the initial Trustee. Upon the death, resignation, or incapacity of Robert J. Johnson, his daughter Emily Johnson shall serve as successor trustee.
-
-ARTICLE 3. TRUST PROPERTY
-The brokerage account ending 4471 shall be held by and titled in the name of the Trust. The Settlor shall execute any documents necessary to retitle such account in the name of the Trustee.
+Trust property: "Brokerage account DEMO-JOHNSON-4471 shall be held by and titled in the name of the Trust."
 
 === PAGE 2 ===
-ARTICLE 4. DISTRIBUTION ON DEATH OF SETTLOR
-Upon the death of the Settlor, the Trustee shall distribute the remaining trust estate in equal shares to the Settlor's children, Emily Johnson, David Johnson and Sarah Johnson, outright and free of trust.
+Distribution: "Upon the death of the Settlor, the Trustee shall distribute the remaining trust estate in equal shares to the Settlor's children, Emily Johnson, David Johnson and Sarah Johnson."
 
-ARTICLE 5. INCAPACITY
-The Settlor shall be considered incapacitated if two licensed physicians certify in writing that the Settlor is unable to manage his financial affairs prudently.
+Governing law: "The validity and construction of this trust shall be determined under the laws of the State of California."
 
-ARTICLE 6. GOVERNING LAW
-The validity and construction of this trust shall be determined under the laws of the State of California.
-
-Executed on June 2, 2021, at San Diego, California.
-
-/s/ Robert J. Johnson
-Robert J. Johnson, Settlor and Trustee
-
-State of California, County of San Diego
-On June 2, 2021, before me, Linda Park, Notary Public, personally appeared Robert J. Johnson, who proved to me on the basis of satisfactory evidence to be the person whose name is subscribed to the within instrument.
-/s/ Linda Park, Notary Public
+This is a fictional summary for demonstration. It is not a legal document and has not been reviewed by an attorney.

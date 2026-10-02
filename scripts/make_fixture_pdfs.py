@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 from core.extract import read_txt  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures"
-SOURCES = ["johnson_will.txt", "johnson_trust.txt", "johnson_poa.txt"]
+SOURCES = ["johnson_will.txt", "johnson_trust.txt", "johnson_poa.txt", "johnson_intentions.txt"]
 
 
 def render(txt_path: Path, pdf_path: Path) -> None:

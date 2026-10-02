@@ -1,17 +1,24 @@
 """Plain-English explanations of findings, plus an optional AI pass for conflicts rules may miss.
 
-The AI never decides what the law is. explain() rewrites a rules finding for an
-advisor; find_additional_conflicts() only surfaces candidates for human review,
-and every one must cite evidence that verifies against already-validated facts.
+Owner: Role 1. The AI never decides what the law is. explain() rewrites a rules
+finding for an advisor; find_additional_conflicts() only surfaces candidates for
+human review, and each one must cite evidence that verifies against validated
+facts and the supplied account records.
 """
 
 import json
 import logging
+import re
+from pathlib import Path
 
 from core.bedrock_client import FAST_MODEL_ID, MODEL_ID, call_tool
-from core.extract import _locate, _normalize
+from core.validation import locate_quote, normalize
 
 log = logging.getLogger(__name__)
+
+PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
+EXPLANATION_PROMPT = (PROMPTS / "explanation.txt").read_text(encoding="utf-8")
+CONFLICTS_PROMPT = (PROMPTS / "conflicts.txt").read_text(encoding="utf-8")
 
 # --------------------------------------------------------------------------- explain
 
@@ -20,30 +27,23 @@ EXPLAIN_SCHEMA = {
     "properties": {
         "explanation": {
             "type": "string",
-            "description": "At most 2 plain-English sentences describing the issue and why it matters.",
+            "description": "At most 2 plain-English sentences describing the difference and why it may matter.",
         },
         "recommendedAction": {
             "type": "string",
-            "description": "One sentence: review with the client and their attorney.",
+            "description": "One sentence: confirm intentions and review with the client and their attorney or appropriate professional.",
         },
     },
     "required": ["explanation", "recommendedAction"],
 }
 
-EXPLAIN_SYSTEM = """You help financial advisors understand flagged inconsistencies between a client's estate documents and account records.
-
-Write for an advisor with no legal training:
-- explanation: at most 2 short, plain-English sentences. Say what does not match and the practical consequence, using only the evidence provided. No legal jargon, no citations of law.
-- recommendedAction: exactly one sentence recommending the advisor review the issue with the client and the client's attorney.
-
-Never give legal advice, never state a definitive legal conclusion, and never tell the client to change, sign, or revoke legal documents themselves. Do not invent facts beyond the evidence."""
-
 
 def explain(finding: dict) -> dict:
     """Return {"explanation": str, "recommendedAction": str} for a finding, using the fast model."""
+    shown = {k: finding.get(k) for k in ("findingId", "priority", "title", "evidence")}
     result = call_tool(
-        system=EXPLAIN_SYSTEM,
-        user_text=f"Finding:\n{json.dumps(finding, indent=2)}\n\nExplain it using the explain_finding tool.",
+        system=EXPLANATION_PROMPT,
+        user_text=f"<finding>\n{json.dumps(shown, indent=2)}\n</finding>\n\nExplain it using the explain_finding tool.",
         tool_name="explain_finding",
         tool_description="Give a plain-English explanation and a recommended next step for a finding.",
         schema=EXPLAIN_SCHEMA,
@@ -58,22 +58,7 @@ def explain(finding: dict) -> dict:
 
 # --------------------------------------------------------------------------- additional conflicts
 
-_EVIDENCE = {
-    "type": "object",
-    "properties": {
-        "source": {"type": "string", "enum": ["document", "account"]},
-        "docType": {
-            "type": ["string", "null"],
-            "description": "For document evidence: will|trust|poa|beneficiary_form|other. null for account evidence.",
-        },
-        "page": {"type": ["integer", "null"], "description": "Document page; null for account evidence."},
-        "quote": {
-            "type": "string",
-            "description": "Copied exactly from a document fact's quote, or an exact value from the client/account record.",
-        },
-    },
-    "required": ["source", "docType", "page", "quote"],
-}
+_NULLABLE = {"type": ["string", "null"]}
 
 CONFLICTS_SCHEMA = {
     "type": "object",
@@ -84,7 +69,22 @@ CONFLICTS_SCHEMA = {
                 "type": "object",
                 "properties": {
                     "title": {"type": "string", "description": "Short neutral title, under 15 words."},
-                    "evidence": {"type": "array", "items": _EVIDENCE, "minItems": 1},
+                    "evidence": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "sourceType": {"type": "string", "enum": ["document", "account"]},
+                                "sourceId": {"type": "string", "description": "Document sourceId, accountId, or clientId."},
+                                "location": {**_NULLABLE, "description": "Document evidence only."},
+                                "quote": {**_NULLABLE, "description": "Document evidence only: exact quote from a fact."},
+                                "field": {**_NULLABLE, "description": "Account evidence only: field name in the record."},
+                                "value": {**_NULLABLE, "description": "Account evidence only: exact value from that field."},
+                            },
+                            "required": ["sourceType", "sourceId", "location", "quote", "field", "value"],
+                        },
+                    },
                 },
                 "required": ["title", "evidence"],
             },
@@ -93,60 +93,74 @@ CONFLICTS_SCHEMA = {
     "required": ["findings"],
 }
 
-CONFLICTS_SYSTEM = """You review extracted estate-document facts against a client's broker-dealer account records to spot possible inconsistencies an advisor should raise with the client and their attorney.
 
-Look for things simple field-matching rules might miss, for example: a fiduciary or agent who the client record says has died; an account a trust says should be titled in the trust but is registered otherwise; a beneficiary designation that predates and contradicts later documents; a change of state residence since documents were signed; people in account records who are absent from the documents.
-
-Rules:
-- Use only the facts and records provided. Never speculate beyond them or state legal conclusions.
-- Every finding needs evidence. Document evidence must copy a quote exactly from a document fact, with that fact's docType and page. Account evidence must quote an exact value from the client or account record (page null, docType null).
-- The title must describe only what the evidence shows, naming roles exactly as the documents do.
-- Do not flag trivial differences such as middle initials, name formatting, or abbreviations of the same person.
-- Return an empty list if nothing is worth flagging. Prefer fewer, well-supported findings."""
-
-
-def _flatten(value, prefix="") -> list[str]:
-    """Flatten client/account JSON into 'key: value' lines so quotes can be checked against it."""
+def _leaves(value, keys: set) -> list[str]:
+    """Collect normalized scalar values (and dict keys into `keys`) under a record field."""
     if isinstance(value, dict):
-        return [line for k, v in value.items() for line in _flatten(v, f"{prefix}{k}.")]
+        keys.update(normalize(k) for k in value)
+        return [leaf for v in value.values() for leaf in _leaves(v, keys)]
     if isinstance(value, list):
-        return [line for v in value for line in _flatten(v, prefix)]
-    return [f"{prefix.rstrip('.')}: {value}"]
+        return [leaf for v in value for leaf in _leaves(v, keys)]
+    return [normalize(str(value))]
 
 
-def _verify_evidence(ev: dict, facts_list: list[dict], record_text: str) -> bool:
-    quote = ev.get("quote") or ""
-    if ev.get("source") == "account":
-        needle = _normalize(quote).strip(" \"'")
-        return bool(needle) and needle in _normalize(record_text)
+def _resolve(record: dict, field: str):
+    """Resolve a field name, allowing dotted paths like 'trustedContact.name'."""
+    value = record
+    for part in (field or "").split("."):
+        if not isinstance(value, dict) or part not in value:
+            return None
+        value = value[part]
+    return value
 
-    # Document evidence: check against verified fact quotes from matching documents.
-    candidates = [f for f in facts_list if not ev.get("docType") or f.get("docType") == ev.get("docType")]
-    for facts in candidates:
-        pages: dict[int, list[str]] = {}
-        for field in ("dateSigned", "governingState"):
-            item = facts.get(field) or {}
-            if item.get("quote"):
-                pages.setdefault(item["page"], []).append(item["quote"])
-        for field in ("people", "assets"):
-            for item in facts.get(field, []):
-                pages.setdefault(item["page"], []).append(item["quote"])
-        page_list = [{"page": p, "text": "\n".join(qs)} for p, qs in pages.items()]
-        found = _locate(quote, ev.get("page"), page_list)
+
+def _verify_document_evidence(ev: dict, facts_list: list[dict]) -> dict | None:
+    for facts in facts_list:
+        if facts.get("sourceId") != ev.get("sourceId"):
+            continue
+        by_location: dict[str, list[str]] = {}
+        for fact in facts.get("facts", []):
+            by_location.setdefault(fact["location"], []).append(fact["quote"])
+        sections = [{"location": loc, "text": "\n".join(q)} for loc, q in by_location.items()]
+        found = locate_quote(ev.get("quote") or "", ev.get("location"), sections)
         if found is not None:
-            ev["page"] = found
-            ev["docType"] = facts.get("docType")
-            return True
-    return False
+            return {"sourceType": "document", "sourceId": ev["sourceId"], "location": found, "quote": ev["quote"]}
+    return None
+
+
+def _verify_account_evidence(ev: dict, client: dict, accounts: list[dict]) -> dict | None:
+    records = {a.get("accountId"): a for a in accounts}
+    if client.get("clientId"):
+        records[client["clientId"]] = client
+    record = records.get(ev.get("sourceId"))
+    field = ev.get("field")
+    target = _resolve(record, field) if record is not None else None
+    if target is None or not normalize(ev.get("value") or ""):
+        return None
+    # A combined value like "Linda Johnson, former spouse, 100%" verifies only if
+    # every comma/semicolon-separated piece is found in the field's actual values.
+    keys: set = set()
+    leaves = _leaves(target, keys)
+    for piece in re.split(r"[,;]", normalize(ev["value"])):
+        piece = piece.strip(" \"'")
+        for key in keys:  # tolerate "recordedDate 2009-05-11" style labels
+            if piece.startswith(key + " ") or piece.startswith(key + ":"):
+                piece = piece[len(key) + 1:].strip(" :")
+                break
+        if piece and not any(piece in leaf for leaf in leaves):
+            return None
+    return {"sourceType": "account", "sourceId": ev["sourceId"], "field": field, "value": ev["value"]}
 
 
 def find_additional_conflicts(facts_list: list[dict], client: dict, accounts: list[dict]) -> list[dict]:
-    """Optional Sonnet pass for conflicts rules may miss. All results have severity "review".
+    """Optional Sonnet pass for conflicts rules may miss. All results have priority "review".
 
-    Findings whose evidence quotes do not verify are dropped (and logged).
+    facts_list holds validated extraction results. A finding is dropped (and
+    logged) if any of its evidence fails to verify.
     """
     facts_for_model = [
-        {k: v for k, v in f.items() if k != "dropped"} for f in facts_list
+        {"sourceId": f.get("sourceId"), "docType": f.get("docType"), "facts": f.get("facts", [])}
+        for f in facts_list
     ]
     user_text = (
         f"<document_facts>\n{json.dumps(facts_for_model, indent=2)}\n</document_facts>\n\n"
@@ -155,31 +169,35 @@ def find_additional_conflicts(facts_list: list[dict], client: dict, accounts: li
         "Report possible inconsistencies using the report_conflicts tool."
     )
     result = call_tool(
-        system=CONFLICTS_SYSTEM,
+        system=CONFLICTS_PROMPT,
         user_text=user_text,
         tool_name="report_conflicts",
-        tool_description="Report possible inconsistencies between estate documents and account records, with evidence.",
+        tool_description="Report possible inconsistencies between documents and account records, with evidence.",
         schema=CONFLICTS_SCHEMA,
         model_id=MODEL_ID,
         max_tokens=4096,
     )
 
-    record_text = "\n".join(_flatten({"client": client, "accounts": accounts}))
     findings = []
     for raw in result.get("findings", []):
-        evidence = [dict(ev) for ev in raw.get("evidence", [])]
-        bad = [ev for ev in evidence if not _verify_evidence(ev, facts_list, record_text)]
-        if not evidence or bad:
-            log.warning("Dropped AI finding %r: unverified evidence %s", raw.get("title"), bad)
+        evidence = []
+        for ev in raw.get("evidence", []):
+            if ev.get("sourceType") == "account":
+                checked = _verify_account_evidence(ev, client, accounts)
+            else:
+                checked = _verify_document_evidence(ev, facts_list)
+            if checked is None:
+                log.warning("Dropped AI finding %r: unverified evidence from %s", raw.get("title"), ev.get("sourceId"))
+                evidence = []
+                break
+            evidence.append(checked)
+        if not evidence:
             continue
-        for ev in evidence:
-            if ev["source"] == "account":
-                ev["docType"], ev["page"] = None, None
         findings.append(
             {
                 "findingId": f"AI-{len(findings) + 1}",
-                "severity": "review",
-                "title": raw.get("title", "").strip(),
+                "priority": "review",
+                "title": str(raw.get("title", "")).strip(),
                 "evidence": evidence,
             }
         )

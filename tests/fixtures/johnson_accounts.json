@@ -1,37 +1,39 @@
 {
   "client": {
-    "clientId": "C-1001",
+    "clientId": "DEMO-JOHNSON",
     "name": "Robert Johnson",
     "age": 74,
     "state": "VA",
+    "spouse": "Carol Johnson",
     "profileNotes": ["Thomas Johnson deceased, March 2025"],
-    "trustedContact": {"name": "Thomas Johnson", "relationship": "brother"}
+    "trustedContact": {"name": "Thomas Johnson", "relationship": "brother"},
+    "snapshotDate": "2026-09-28"
   },
   "accounts": [
     {
-      "accountId": "...4471",
+      "accountId": "DEMO-JOHNSON-4471",
       "type": "Brokerage",
-      "registration": "Individual",
+      "registration": "Individual Robert Johnson",
       "owners": ["Robert Johnson"],
-      "beneficiaries": [
-        {"name": "Linda Johnson", "relationship": "ex-wife", "designation": "TOD", "share": "100%", "dateSet": "2009-05-11"}
+      "todBeneficiaries": [
+        {"name": "Linda Johnson", "relationship": "former spouse", "tier": "primary", "allocation": "100%", "recordedDate": "2009-05-11"}
       ],
       "value": 1200000
     },
     {
-      "accountId": "...8820",
+      "accountId": "DEMO-JOHNSON-8820",
       "type": "IRA",
       "registration": "Traditional IRA",
       "owners": ["Robert Johnson"],
       "beneficiaries": [
-        {"name": "Carol Johnson", "relationship": "", "designation": "primary", "share": "100%"}
+        {"name": "Carol Johnson", "relationship": "spouse", "tier": "primary", "allocation": "100%"}
       ],
       "value": 640000
     },
     {
-      "accountId": "...3302",
+      "accountId": "DEMO-JOHNSON-3302",
       "type": "Joint",
-      "registration": "Joint Tenants with Right of Survivorship",
+      "registration": "Joint with Carol Johnson",
       "owners": ["Robert Johnson", "Carol Johnson"],
       "beneficiaries": [],
       "value": 85000

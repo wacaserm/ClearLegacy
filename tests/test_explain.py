@@ -1,34 +1,65 @@
 """find_additional_conflicts drops AI findings whose evidence doesn't verify. Model is mocked."""
 
 import core.explain as explain_mod
+from core.extract import extract_facts
 
 WILL = {
+    "sourceId": "johnson-will",
     "docType": "will",
-    "dateSigned": {"value": "2019-03-14", "page": 2, "quote": "I have signed this Will on March 14, 2019"},
-    "governingState": {"value": None, "page": None, "quote": None},
-    "people": [
-        {"name": "Thomas Johnson", "relationship": "brother", "role": "executor", "share": None,
-         "page": 2, "quote": "I nominate and appoint my brother, Thomas Johnson, as Executor"},
+    "facts": [
+        {"field": "executor", "value": "Thomas Johnson", "location": "page 2",
+         "quote": "I nominate and appoint my brother, Thomas Johnson, as Executor"},
     ],
-    "assets": [],
+    "warnings": [],
 }
-CLIENT = {"name": "Robert Johnson", "profileNotes": ["Thomas Johnson deceased, March 2025"]}
-ACCOUNTS = [{"accountId": "...4471", "registration": "Individual"}]
+CLIENT = {"clientId": "DEMO-JOHNSON", "profileNotes": ["Thomas Johnson deceased, March 2025"]}
+ACCOUNTS = [{"accountId": "DEMO-JOHNSON-4471", "registration": "Individual Robert Johnson"}]
+
+
+def _doc_ev(quote, location="page 1", source="johnson-will"):
+    return {"sourceType": "document", "sourceId": source, "location": location, "quote": quote, "field": None, "value": None}
+
+
+def _acct_ev(source, field, value):
+    return {"sourceType": "account", "sourceId": source, "location": None, "quote": None, "field": field, "value": value}
 
 
 def test_unverified_findings_are_dropped(monkeypatch):
     fake = {"findings": [
-        {"title": "Executor is deceased", "evidence": [
-            {"source": "document", "docType": "will", "page": 1, "quote": "my brother, Thomas Johnson, as Executor"},
-            {"source": "account", "docType": None, "page": None, "quote": "Thomas Johnson deceased, March 2025"},
+        {"title": "Executor reported deceased", "evidence": [
+            _doc_ev("my brother, Thomas Johnson, as Executor"),
+            _acct_ev("DEMO-JOHNSON", "profileNotes", "Thomas Johnson deceased, March 2025"),
         ]},
-        {"title": "Invented conflict", "evidence": [
-            {"source": "document", "docType": "will", "page": 1, "quote": "I leave my boat to Linda"},
-        ]},
+        {"title": "Invented document quote", "evidence": [_doc_ev("I leave my boat to Linda")]},
+        {"title": "Wrong account field", "evidence": [_acct_ev("DEMO-JOHNSON-4471", "registration", "Trust")]},
+        {"title": "Unknown account", "evidence": [_acct_ev("DEMO-OTHER-1", "registration", "Individual")]},
     ]}
     monkeypatch.setattr(explain_mod, "call_tool", lambda **kw: fake)
     out = explain_mod.find_additional_conflicts([WILL], CLIENT, ACCOUNTS)
     assert len(out) == 1
     f = out[0]
-    assert f["findingId"] == "AI-1" and f["severity"] == "review"
-    assert f["evidence"][0]["page"] == 2  # corrected from 1
+    assert f["findingId"] == "AI-1" and f["priority"] == "review"
+    assert f["evidence"][0] == {"sourceType": "document", "sourceId": "johnson-will",
+                                "location": "page 2", "quote": "my brother, Thomas Johnson, as Executor"}
+    assert f["evidence"][1] == {"sourceType": "account", "sourceId": "DEMO-JOHNSON",
+                                "field": "profileNotes", "value": "Thomas Johnson deceased, March 2025"}
+
+
+def test_empty_document_returns_warning_without_model_call():
+    out = extract_facts({"sourceId": "blank", "filename": "blank.pdf", "docType": "will",
+                         "sections": [{"location": "page 1", "text": "  "}]})
+    assert out["facts"] == []
+    assert out["warnings"][0]["code"] == "no_readable_text"
+
+
+def test_combined_and_dotted_account_values():
+    client = {"clientId": "C", "trustedContact": {"name": "Thomas Johnson"}}
+    accounts = [{"accountId": "A", "todBeneficiaries": [
+        {"name": "Linda Johnson", "relationship": "former spouse", "tier": "primary",
+         "allocation": "100%", "recordedDate": "2009-05-11"}]}]
+    v = explain_mod._verify_account_evidence
+    assert v(_acct_ev("C", "trustedContact.name", "Thomas Johnson"), client, accounts)
+    assert v(_acct_ev("A", "todBeneficiaries",
+                      "Linda Johnson, former spouse, primary, 100%, recordedDate 2009-05-11"), client, accounts)
+    assert not v(_acct_ev("A", "todBeneficiaries", "Linda Johnson, 50%"), client, accounts)
+    assert not v(_acct_ev("C", "trustedContact.phone", "555"), client, accounts)

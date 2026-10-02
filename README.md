@@ -137,58 +137,57 @@ You do not need to recreate `.venv` each time.
 Never commit `.venv`, AWS credentials, or secret configuration files.
 ## Role 1: AI extraction
 
-The AI only **extracts facts** and **explains findings**. Comparing documents to accounts is done by plain Python rules in `core/rules.py` (Role 2). Every extracted fact carries a `page` and a verbatim `quote`, and any fact whose quote can't be found in the source text is dropped. This is our guard against hallucinated conflicts.
+Follows the shared contracts in the project guide. The AI only **extracts facts** and **explains findings**. Comparison is done by Python rules in `core/rules.py` (Role 2). Every fact carries a `location` and a verbatim `quote`, and `core/validation.validate_facts` excludes any fact whose quote isn't in the document (it becomes a warning).
 
 ### Functions
 
 | Function | Input | Output |
 |---|---|---|
-| `core.extract.read_pdf(path)` | `.pdf`, or `.txt` with `=== PAGE N ===` separators | `[{"page": 1, "text": "..."}]`. Scanned single-page PDFs are OCR'd with Textract. Scanned pages in multi-page PDFs come back as `""` with a warning. |
-| `core.extract.extract_facts(pages, doc_type)` | pages from `read_pdf`, `doc_type` in `will\|trust\|poa\|beneficiary_form\|other` | raw facts dict (below), from Sonnet 5 |
-| `core.extract.validate_facts(facts, pages)` | facts + pages | facts with unverifiable items removed, wrong page numbers corrected, plus `"dropped": [{"field", "item", "reason"}]` |
-| `core.extract.extract_document(path, doc_type)` | file path | read + extract + validate, plus `"source": "<filename>"` |
-| `core.explain.explain(finding)` | finding dict (below) | `{"explanation": "<=2 sentences", "recommendedAction": "1 sentence"}` (Haiku 4.5) |
-| `core.explain.find_additional_conflicts(facts_list, client, accounts)` | list of `extract_document` outputs, client dict, accounts list | list of findings, all `severity: "review"`. Evidence must match already-verified fact quotes or exact account values, or the finding is dropped. |
+| `core.extract.extract_facts(document)` | document shape from `core/document_reader.read_document` | `{sourceId, docType, facts, warnings}` (not yet validated) |
+| `core.validation.validate_facts(facts, document)` | facts + the same document | unsupported facts removed and added to `warnings` as `{"code": "unsupported_fact", ...}`, wrong locations corrected |
+| `core.explain.explain(finding)` | guide finding (`findingId, priority, title, evidence`) | `{"explanation": "<=2 sentences", "recommendedAction": "1 sentence"}` (Haiku 4.5) |
+| `core.explain.find_additional_conflicts(facts_list, client, accounts)` | validated facts, client dict, accounts list | optional extra findings, all `priority: "review"`. Every evidence item must match a validated fact quote or an actual account field value, or the finding is dropped. |
+| `core.extract.load_document(path, doc_type, source_id)` | local `.pdf` or `.txt` (`=== PAGE N ===` separators) | the shared document shape, a stand-in until Role 3's reader is ready (no DOCX yet) |
+| `core.extract.extract_document(path, doc_type, source_id)` | local file | load + extract + validate, for scripts |
 
-Facts format:
+An empty document returns no facts and a `no_readable_text` warning without calling Bedrock.
 
-```json
-{
-  "docType": "will",
-  "dateSigned":     {"value": "2019-03-14", "page": 2, "quote": "..."},
-  "governingState": {"value": "CA", "page": 2, "quote": "..."},
-  "people": [{"name": "Emily Johnson", "relationship": "daughter", "role": "beneficiary",
-              "share": "equal shares", "page": 1, "quote": "..."}],
-  "assets": [{"description": "LPL brokerage account", "disposition": "residuary estate",
-              "page": 1, "quote": "..."}],
-  "dropped": [],
-  "source": "johnson_will.txt"
-}
-```
-
-`role` is one of `beneficiary|executor|trustee|successor_trustee|poa_agent|guardian|other`. When the date or state is missing, `value`, `page` and `quote` are all `null`.
-
-Finding format (input to `explain`, output of `find_additional_conflicts`):
+### Fact shape
 
 ```json
-{"findingId": "F-001", "severity": "high", "title": "...",
- "evidence": [{"source": "document", "docType": "will", "page": 1, "quote": "..."},
-              {"source": "account", "docType": null, "page": null, "quote": "..."}]}
+{"field": "intended_beneficiary", "value": "Casey Morgan", "location": "page 1",
+ "quote": "I want Casey Morgan to receive 100% as primary beneficiary of my IRA DEMO-MORGAN-IRA.",
+ "accountRef": "DEMO-MORGAN-IRA", "tier": "primary", "allocation": "100%",
+ "relationship": "spouse", "asOf": null}
 ```
 
-### Configuration
+The extra keys (`accountRef`, `tier`, `allocation`, `relationship`, `asOf`) are always present and `null` when not stated.
+
+`field` is one of: `document_id`, `document_date`, `snapshot_date`, `governing_state`, `client_name`, `family_member`, `intended_beneficiary` (account-specific intention), `intentional_exclusion`, `residuary_beneficiary` (general will or trust clause, never account-specific), `executor`, `alternate_executor`, `trustee`, `successor_trustee`, `poa_agent`, `successor_poa_agent`, `guardian`, `trust_owned_account`, `account_beneficiary` (designation on record), `account_registration`, `account_owner`, `missing_information`, `unspecified_intention`. Definitions are in `prompts/extraction.txt`.
+
+`docType` is one of: `will`, `trust`, `poa`, `planning_summary`, `account_records`, `beneficiary_form`, `other`.
+
+### Prompts
+
+`prompts/extraction.txt`, `prompts/explanation.txt` and `prompts/conflicts.txt` are loaded at import. Document text is treated as data, never as instructions.
+
+### Configuration and limits
 
 - AWS credentials come from environment variables only (region `us-east-1`). Never commit them.
 - `CLEARLEGACY_MODEL_ID` (default `us.anthropic.claude-sonnet-5`) and `CLEARLEGACY_FAST_MODEL_ID` (default `us.anthropic.claude-haiku-4-5-20251001-v1:0`).
-- Expired or missing credentials raise `AWSCredentialsExpired` with the message "AWS credentials expired: refresh them from the workshop page".
+- Expired or missing credentials raise `AWSCredentialsExpired`: "AWS credentials expired: refresh them from the workshop page".
+- Cost per call: one Bedrock call per document extraction, one per `explain`, one for `find_additional_conflicts`. Each document takes about 6–11 seconds and a few thousand tokens.
+- Workshop quotas are far above this (Sonnet 5: 6M tokens per minute; Haiku 4.5: 10,000 requests per minute; Textract: 25 per second).
+- The client retries throttled calls with adaptive backoff (up to 5 attempts).
+- In Streamlit, only call Bedrock on a button press and keep results in `st.session_state`, so reruns don't repeat calls.
 
 ### Running
 
 ```bash
 pip install -r requirements.txt
-python -m pytest tests                  # validator tests, no AWS needed
+python -m pytest tests                  # validation and evidence tests, no AWS needed
 python scripts/make_fixture_pdfs.py     # regenerate tests/fixtures/pdf/ from the .txt fixtures
-python scripts/run_role1_demo.py        # live Bedrock demo over all fixtures, with timings
+python scripts/run_role1_demo.py        # live demo: Johnson fixtures + sample_data PDFs (~13 Bedrock calls)
 ```
 
-All fixtures in `tests/fixtures/` are fictional.
+All fixtures are fictional demonstration summaries, not legal documents.
