@@ -19,7 +19,7 @@ def render_household(client, status):
         st.title(name)
     with badge:
         label, color = STATUS_LABELS.get(status, ("Not analyzed", "gray"))
-        st.badge(label, color=color)
+        st.markdown(f":{color}[**{label}**]")
 
 
 def render_account_details(accounts):

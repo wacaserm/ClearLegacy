@@ -1,8 +1,36 @@
 import streamlit as st
 
-from core.extract import extract_facts
+from services import gui_adapter
+from ui.findings import render_findings
+from ui.household import render_account_details, render_household
+from ui.review import render_history
+from ui.sidebar import render_sidebar
+from ui.state import (
+    begin_analysis,
+    complete_analysis,
+    fail_analysis,
+    fingerprint_documents,
+    get_current_analysis,
+    get_workspace,
+    initialize_state,
+    load_sample_analysis,
+    pop_notice,
+    save_decision,
+    select_household,
+    set_notice,
+    sync_uploads,
+)
+from ui.empty_states import render_analysis_state
+from ui.uploads import render_analyze_button, render_uploads
 
 st.set_page_config(page_title="ClearLegacy", layout="wide")
+
+backend = gui_adapter.backend_status()
+try:
+    households = gui_adapter.get_households(backend)
+except Exception as error:
+    households = gui_adapter._fixture_households()
+    st.warning(f"Stored client records are unavailable; using fictional fixture households: {error}")
 
 household_ids = [item["clientId"] for item in households]
 state = initialize_state(household_ids)
@@ -37,7 +65,6 @@ had_analysis = bool(workspace["current_analysis_id"])
 uploads_changed = sync_uploads(selected_client_id, upload_fingerprint)
 if uploads_changed and had_analysis:
     st.rerun()
-
 workspace = get_workspace(selected_client_id)
 with header_slot.container():
     render_household(client, workspace["status"])
@@ -161,28 +188,3 @@ if review_event:
             f"{workspace['notice']} Attorney review is an internal flag; nothing is sent externally.",
         )
     st.rerun()
-
-if st.button("Analyze records", type="primary"):
-    documents = [
-        {
-            "sourceId": "streamlit-planning-summary",
-            "filename": "planning_summary.txt",
-            "docType": "planning_summary",
-            "sections": [{"location": "page 1", "text": st.session_state.planning_summary}],
-        },
-        {
-            "sourceId": "streamlit-account-record",
-            "filename": "account_record.txt",
-            "docType": "account_records",
-            "sections": [{"location": "page 1", "text": st.session_state.beneficiary_record}],
-        },
-    ]
-    try:
-        with st.spinner("Extracting evidence with Amazon Bedrock..."):
-            planning_facts = extract_facts(documents[0])
-            account_facts = extract_facts(documents[1])
-        st.success("Bedrock extraction completed.")
-        st.subheader("Extracted facts")
-        st.json({"planning": planning_facts, "account": account_facts})
-    except Exception as exc:
-        st.error(f"Bedrock extraction failed: {exc}")
