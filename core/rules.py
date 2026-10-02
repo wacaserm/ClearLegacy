@@ -1,4 +1,4 @@
-"""Compare validated planning intentions with supplied account records.
+"""Compare validated document facts with supplied account and client records.
 
 Inputs:
     facts_list: List of validated document extraction dictionaries.
@@ -8,6 +8,23 @@ Inputs:
 Output:
     Dictionary with status, findings, clarificationQuestions,
     warnings, and comparison scope.
+
+Rules (plain Python, no AI):
+    1. will_vs_tod: a will or trust names beneficiaries X; a TOD
+       account names Y; anyone in Y who is not in X -> Critical.
+       beneficiary_comparison separately compares account-specific
+       intentions with account designations -> High / Review.
+    2. trust_funding: document says the trust owns an account; the
+       account registration does not show the trust (name taken from
+       client["trustName"]) -> High.
+    3. deceased_fiduciary: a fiduciary named in a document (executor,
+       trustee, POA agent, ...) is marked deceased in the client
+       profile (client["fiduciaries"]) -> High.
+    4. governing_state: document's governing state differs from the
+       client's current state (two-letter codes) -> Review.
+
+Principle for every rule: unknown or missing data produces a
+clarification question, never a finding.
 
 The integration pipeline adds analysisId.
 No AWS calls are made here.
@@ -23,6 +40,34 @@ TIER_FIELDS = {
     "primary": "primaryBeneficiaries",
     "contingent": "contingentBeneficiaries",
 }
+
+LEGAL_DOC_TYPES = {"will", "trust"}
+
+# Extraction field names (core/extract.py FACT_FIELDS) that name a
+# fiduciary. The field name is the role.
+FIDUCIARY_FIELDS = {
+    "executor",
+    "alternate_executor",
+    "trustee",
+    "successor_trustee",
+    "poa_agent",
+    "successor_poa_agent",
+    "guardian",
+}
+
+RULES = [
+    "will_vs_tod",
+    "beneficiary_comparison",
+    "trust_funding",
+    "deceased_fiduciary",
+    "governing_state",
+]
+
+ACTION = (
+    "Confirm current records and intentions "
+    "with the client and review with their "
+    "attorney or appropriate professional."
+)
 
 
 def _normalize_name(value):
@@ -102,10 +147,14 @@ def _document_evidence(source_id, fact):
     }
 
 
-def _finding_id(client_id, account_id, tier, evidence):
+def _has_evidence(source_id, fact):
+    return bool(source_id and fact.get("quote") and fact.get("location"))
+
+
+def _finding_id(client_id, key, tier, evidence, rule="beneficiary"):
     """Generate a repeatable ID for the same comparison evidence."""
     payload = json.dumps(
-        [client_id, account_id, tier, evidence],
+        [client_id, key, tier, evidence],
         sort_keys=True,
         ensure_ascii=True,
     )
@@ -114,73 +163,45 @@ def _finding_id(client_id, account_id, tier, evidence):
         payload.encode("utf-8")
     ).hexdigest()[:16]
 
-    return f"beneficiary-{digest}"
+    return f"{rule}-{digest}"
 
 
-def reconcile(facts_list, client, accounts):
-    """Compare validated intentions with supplied account records."""
+def _warning_text(warning):
+    """Warnings are shown as plain strings in the UI."""
+    if isinstance(warning, dict):
+        return warning.get("message") or json.dumps(
+            warning, sort_keys=True
+        )
+    return str(warning)
+
+
+def _add_finding(findings, finding):
+    """Append a finding unless an identical one is already present."""
+    if all(
+        existing["findingId"] != finding["findingId"]
+        for existing in findings
+    ):
+        findings.append(finding)
+
+
+# ---------------------------------------------------------------------
+# Rule 1: beneficiary comparison
+# ---------------------------------------------------------------------
+
+def _rule_beneficiary(
+    facts_list, client, accounts, accounts_by_id, ask, compared
+):
     findings = []
-    questions = []
-    warnings = []
-    compared = []
-
-    def ask(message):
-        if message not in questions:
-            questions.append(message)
-
-    accounts_by_id = {
-        account["accountId"]: account
-        for account in accounts
-    }
 
     # Group by account and tier, then by source document.
     # Never mix allocations from different documents.
     groups = defaultdict(lambda: defaultdict(list))
 
-    if not facts_list:
-        ask(
-            "Supply readable planning documents "
-            "and validated extracted facts."
-        )
-
     for document in facts_list:
         source_id = document.get("sourceId")
-        document_warnings = document.get("warnings") or []
-        warnings.extend(document_warnings)
 
-        if document_warnings:
-            ask(
-                "Review extraction or validation warnings before "
-                "treating this comparison as complete."
-            )
-
-        facts = document.get("facts") or []
-
-        if not facts:
-            ask(
-                f"No usable facts were supplied for "
-                f"{source_id or 'a document'}. "
-                "Confirm extraction succeeded."
-            )
-
-        for fact in facts:
-            field = fact.get("field")
-
-            if field in {
-                "missing_information",
-                "unspecified_intention",
-            }:
-                detail = (
-                    fact.get("value")
-                    or "Information is incomplete."
-                )
-                ask(
-                    f"Clarify information from {source_id}: "
-                    f"{detail}"
-                )
-                continue
-
-            if field != "intended_beneficiary":
+        for fact in document.get("facts") or []:
+            if fact.get("field") != "intended_beneficiary":
                 continue
 
             account_id = fact.get("accountRef")
@@ -195,16 +216,10 @@ def reconcile(facts_list, client, accounts):
                 continue
 
             if account_id not in accounts_by_id:
-                ask(
-                    f"Supply account records for {account_id}."
-                )
+                ask(f"Supply account records for {account_id}.")
                 continue
 
-            if (
-                not source_id
-                or not fact.get("quote")
-                or not fact.get("location")
-            ):
+            if not _has_evidence(source_id, fact):
                 ask(
                     f"Supply source evidence for the "
                     f"{account_id} {tier} beneficiary intention."
@@ -318,6 +333,7 @@ def reconcile(facts_list, client, accounts):
                 continue
 
         compared.append({
+            "rule": "beneficiary_comparison",
             "accountId": account_id,
             "tier": tier,
         })
@@ -359,11 +375,11 @@ def reconcile(facts_list, client, accounts):
             priority = "review"
 
         else:
+            priority = "high"
             title = (
                 f"Potential {tier} beneficiary mismatch "
                 f"for {account_id}"
             )
-
             explanation = (
                 "The documented intention and supplied account "
                 "record differ in beneficiary names or "
@@ -371,9 +387,7 @@ def reconcile(facts_list, client, accounts):
                 "is intentional."
             )
 
-            priority = "high"
-
-        findings.append({
+        _add_finding(findings, {
             "findingId": _finding_id(
                 client["clientId"],
                 account_id,
@@ -384,13 +398,513 @@ def reconcile(facts_list, client, accounts):
             "title": title,
             "explanation": explanation,
             "evidence": evidence,
-            "recommendedAction": (
-                "Confirm current records and intentions "
-                "with the client and review with their "
-                "attorney or appropriate professional."
-            ),
+            "recommendedAction": ACTION,
             "decision": None,
         })
+
+    return findings
+
+
+# ---------------------------------------------------------------------
+# Rule 1: will or trust vs TOD designations
+# ---------------------------------------------------------------------
+
+def _rule_will_vs_tod(facts_list, client, accounts, ask, compared):
+    findings = []
+    named = {}
+    document_evidence = []
+
+    for document in facts_list:
+        if document.get("docType") not in LEGAL_DOC_TYPES:
+            continue
+
+        source_id = document.get("sourceId")
+
+        for fact in document.get("facts") or []:
+            if fact.get("field") not in {
+                "residuary_beneficiary",
+                "intended_beneficiary",
+            }:
+                continue
+
+            name = fact.get("value")
+
+            if not isinstance(name, str) or not name.strip():
+                continue
+
+            if not _has_evidence(source_id, fact):
+                ask(
+                    f"Supply source evidence for {name}, named in "
+                    f"{source_id or 'a document'}."
+                )
+                continue
+
+            named[_normalize_name(name)] = name
+            item = _document_evidence(source_id, fact)
+
+            if item not in document_evidence:
+                document_evidence.append(item)
+
+    if not named:
+        return findings
+
+    for account in accounts:
+        if account.get("designationType") != "TOD":
+            continue
+
+        account_id = account["accountId"]
+
+        for tier, field in TIER_FIELDS.items():
+            rows = account.get(field)
+
+            if not isinstance(rows, list) or not rows:
+                continue
+
+            names = [
+                row.get("name") for row in rows
+                if isinstance(row, dict)
+                and isinstance(row.get("name"), str)
+                and row["name"].strip()
+            ]
+
+            if len(names) != len(rows):
+                ask(
+                    f"Confirm complete recorded {tier} "
+                    f"beneficiaries for {account_id}."
+                )
+                continue
+
+            compared.append({
+                "rule": "will_vs_tod",
+                "accountId": account_id,
+                "tier": tier,
+            })
+
+            not_named = [
+                name for name in names
+                if _normalize_name(name) not in named
+            ]
+
+            if not not_named:
+                continue
+
+            evidence = list(document_evidence) + [{
+                "sourceType": "account",
+                "sourceId": account_id,
+                "field": field,
+                "value": json.dumps(rows, sort_keys=True),
+            }]
+
+            _add_finding(findings, {
+                "findingId": _finding_id(
+                    client["clientId"],
+                    account_id,
+                    tier,
+                    evidence,
+                    rule="will-vs-tod",
+                ),
+                "priority": "critical",
+                "title": (
+                    f"{account_id} TOD names a {tier} beneficiary "
+                    "who is not in the will or trust"
+                ),
+                "explanation": (
+                    f"{', '.join(not_named)} is listed as a {tier} "
+                    f"transfer-on-death beneficiary on {account_id} "
+                    "but is not named in the will or trust. The "
+                    "account designation, not the document, may "
+                    "decide who receives this account. Confirm "
+                    "whether this is intentional."
+                ),
+                "evidence": evidence,
+                "recommendedAction": ACTION,
+                "decision": None,
+            })
+
+    return findings
+
+
+# ---------------------------------------------------------------------
+# Rule 2: trust funding
+# ---------------------------------------------------------------------
+
+def _rule_trust_funding(
+    facts_list, client, accounts_by_id, ask, compared
+):
+    findings = []
+    trust_name = client.get("trustName")
+
+    for document in facts_list:
+        source_id = document.get("sourceId")
+
+        for fact in document.get("facts") or []:
+            if fact.get("field") != "trust_owned_account":
+                continue
+
+            account_id = fact.get("accountRef")
+
+            if not account_id:
+                ask(
+                    "Confirm which account the trust document "
+                    "says the trust owns."
+                )
+                continue
+
+            if account_id not in accounts_by_id:
+                ask(f"Supply account records for {account_id}.")
+                continue
+
+            if not _has_evidence(source_id, fact):
+                ask(
+                    "Supply source evidence for the trust ownership "
+                    f"statement about {account_id}."
+                )
+                continue
+
+            if not isinstance(trust_name, str) or not trust_name.strip():
+                ask(
+                    "Supply the trust's name in the client profile "
+                    f"to check how {account_id} is registered."
+                )
+                continue
+
+            account = accounts_by_id[account_id]
+            registration = account.get("registration")
+
+            if (
+                not isinstance(registration, str)
+                or not registration.strip()
+            ):
+                ask(
+                    f"Supply the current registration for "
+                    f"{account_id}; missing data does not establish "
+                    "that the account is outside the trust."
+                )
+                continue
+
+            compared.append({
+                "rule": "trust_funding",
+                "accountId": account_id,
+            })
+
+            if (
+                _normalize_name(trust_name)
+                in _normalize_name(registration)
+            ):
+                continue
+
+            evidence = [
+                _document_evidence(source_id, fact),
+                {
+                    "sourceType": "account",
+                    "sourceId": account_id,
+                    "field": "registration",
+                    "value": registration,
+                },
+            ]
+
+            _add_finding(findings, {
+                "findingId": _finding_id(
+                    client["clientId"],
+                    account_id,
+                    "registration",
+                    evidence,
+                    rule="trust-funding",
+                ),
+                "priority": "high",
+                "title": (
+                    f"{account_id} may not be funded into "
+                    f"{trust_name}"
+                ),
+                "explanation": (
+                    f"The document says {account_id} should be held "
+                    f"by {trust_name}, but the account is registered "
+                    f"as \"{registration}\". The trust may be "
+                    "unfunded for this account."
+                ),
+                "evidence": evidence,
+                "recommendedAction": ACTION,
+                "decision": None,
+            })
+
+    return findings
+
+
+# ---------------------------------------------------------------------
+# Rule 3: deceased fiduciary
+# ---------------------------------------------------------------------
+
+def _find_fiduciary(profile, name, role):
+    matches = [
+        entry for entry in profile
+        if isinstance(entry, dict)
+        and _normalize_name(entry.get("name", "")) == _normalize_name(name)
+    ]
+
+    for entry in matches:
+        if entry.get("role") == role:
+            return entry
+
+    return matches[0] if matches else None
+
+
+def _rule_deceased_fiduciary(
+    facts_list, client, ask, compared
+):
+    findings = []
+    profile = client.get("fiduciaries")
+
+    for document in facts_list:
+        source_id = document.get("sourceId")
+
+        for fact in document.get("facts") or []:
+            role = fact.get("field")
+
+            if role not in FIDUCIARY_FIELDS:
+                continue
+
+            name = fact.get("value")
+            role_label = role.replace("_", " ")
+
+            if not name or not _has_evidence(source_id, fact):
+                ask(
+                    "Confirm the name and source evidence for the "
+                    f"{role_label} named in {source_id or 'a document'}."
+                )
+                continue
+
+            if not isinstance(profile, list):
+                ask(
+                    "Supply the client's fiduciary records; whether "
+                    f"{name} ({role_label}) is living is unknown."
+                )
+                continue
+
+            entry = _find_fiduciary(profile, name, role)
+
+            if entry is None or entry.get("status") not in {
+                "living", "deceased"
+            }:
+                ask(
+                    f"Confirm whether {name} ({role_label}) is "
+                    "living; no status is on record."
+                )
+                continue
+
+            compared.append({
+                "rule": "deceased_fiduciary",
+                "fiduciary": name,
+                "role": role,
+            })
+
+            if entry["status"] != "deceased":
+                continue
+
+            evidence = [
+                _document_evidence(source_id, fact),
+                {
+                    "sourceType": "account",
+                    "sourceId": client["clientId"],
+                    "filename": "Client profile",
+                    "location": "fiduciaries",
+                    "field": "fiduciaries",
+                    "value": f"{entry['name']}, deceased",
+                },
+            ]
+
+            died = entry.get("deceasedDate")
+            when = f" (date recorded: {died})" if died else ""
+
+            _add_finding(findings, {
+                "findingId": _finding_id(
+                    client["clientId"],
+                    _normalize_name(name),
+                    role,
+                    evidence,
+                    rule="deceased-fiduciary",
+                ),
+                "priority": "high",
+                "title": (
+                    f"{name} is named as {role_label} but is "
+                    "marked deceased"
+                ),
+                "explanation": (
+                    f"The document names {name} as {role_label}, "
+                    f"but the client profile marks {name} as "
+                    f"deceased{when}. A successor may need to be "
+                    "named."
+                ),
+                "evidence": evidence,
+                "recommendedAction": ACTION,
+                "decision": None,
+            })
+
+    return findings
+
+
+# ---------------------------------------------------------------------
+# Rule 4: governing state
+# ---------------------------------------------------------------------
+
+def _rule_governing_state(
+    facts_list, client, ask, compared
+):
+    findings = []
+    client_state = client.get("state")
+
+    for document in facts_list:
+        source_id = document.get("sourceId")
+
+        for fact in document.get("facts") or []:
+            if fact.get("field") != "governing_state":
+                continue
+
+            state = fact.get("value")
+
+            if not state or not _has_evidence(source_id, fact):
+                ask(
+                    "Confirm the governing state and source evidence "
+                    f"for {source_id or 'a document'}."
+                )
+                continue
+
+            if (
+                not isinstance(client_state, str)
+                or not client_state.strip()
+            ):
+                ask(
+                    "Supply the client's current state of residence "
+                    "to compare with the document's governing state."
+                )
+                continue
+
+            compared.append({
+                "rule": "governing_state",
+                "sourceId": source_id,
+            })
+
+            if _normalize_name(state) == _normalize_name(client_state):
+                continue
+
+            evidence = [
+                _document_evidence(source_id, fact),
+                {
+                    "sourceType": "account",
+                    "sourceId": client["clientId"],
+                    "filename": "Client profile",
+                    "location": "profile",
+                    "field": "state",
+                    "value": client_state,
+                },
+            ]
+
+            _add_finding(findings, {
+                "findingId": _finding_id(
+                    client["clientId"],
+                    source_id,
+                    "state",
+                    evidence,
+                    rule="governing-state",
+                ),
+                "priority": "review",
+                "title": (
+                    f"Document governed by {state}; client "
+                    f"currently lives in {client_state}"
+                ),
+                "explanation": (
+                    f"{source_id} names {state} law, but the "
+                    f"client's current state is {client_state}. "
+                    "State rules for wills, trusts and powers of "
+                    "attorney can differ."
+                ),
+                "evidence": evidence,
+                "recommendedAction": ACTION,
+                "decision": None,
+            })
+
+    return findings
+
+
+# ---------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------
+
+def reconcile(facts_list, client, accounts):
+    """Compare validated document facts with supplied records."""
+    findings = []
+    questions = []
+    warnings = []
+    compared = []
+
+    def ask(message):
+        if message not in questions:
+            questions.append(message)
+
+    accounts_by_id = {
+        account["accountId"]: account
+        for account in accounts
+    }
+
+    if not facts_list:
+        ask(
+            "Supply readable planning documents "
+            "and validated extracted facts."
+        )
+
+    for document in facts_list:
+        source_id = document.get("sourceId")
+        document_warnings = document.get("warnings") or []
+
+        for warning in document_warnings:
+            text = _warning_text(warning)
+
+            if text not in warnings:
+                warnings.append(text)
+
+        if document_warnings:
+            ask(
+                "Review extraction or validation warnings before "
+                "treating this comparison as complete."
+            )
+
+        facts = document.get("facts") or []
+
+        if not facts:
+            ask(
+                f"No usable facts were supplied for "
+                f"{source_id or 'a document'}. "
+                "Confirm extraction succeeded."
+            )
+
+        for fact in facts:
+            if fact.get("field") in {
+                "missing_information",
+                "unspecified_intention",
+            }:
+                detail = (
+                    fact.get("value")
+                    or "Information is incomplete."
+                )
+                ask(
+                    f"Clarify information from {source_id}: "
+                    f"{detail}"
+                )
+
+    findings += _rule_will_vs_tod(
+        facts_list, client, accounts, ask, compared
+    )
+    findings += _rule_beneficiary(
+        facts_list, client, accounts, accounts_by_id, ask, compared
+    )
+    findings += _rule_trust_funding(
+        facts_list, client, accounts_by_id, ask, compared
+    )
+    findings += _rule_deceased_fiduciary(
+        facts_list, client, ask, compared
+    )
+    findings += _rule_governing_state(
+        facts_list, client, ask, compared
+    )
 
     if not compared:
         ask(
@@ -412,7 +926,7 @@ def reconcile(facts_list, client, accounts):
         "clarificationQuestions": questions,
         "warnings": warnings,
         "scope": {
-            "rule": "account_specific_beneficiary_comparison",
+            "rules": RULES,
             "compared": compared,
         },
     }
