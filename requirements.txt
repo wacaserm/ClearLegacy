@@ -1,3 +1,5 @@
 streamlit
 boto3
 pypdf
+reportlab
+pytest
