@@ -7,6 +7,7 @@ from or written to files here.
 import json
 import logging
 import os
+import threading
 from functools import lru_cache
 
 import boto3
@@ -81,6 +82,69 @@ def is_credentials_error(exc: Exception) -> bool:
     return False
 
 
+# --------------------------------------------------------------------------- token usage and cost
+
+# USD per 1M tokens (input, output). VERIFY before quoting: these are Anthropic's
+# published first-party rates (Sonnet 5: $2/$10, Haiku 4.5: $1/$5). Amazon Bedrock is
+# partner-priced and may differ; check https://aws.amazon.com/bedrock/pricing/ for
+# on-demand cross-region inference rates in us-east-1.
+PRICES_PER_MILLION = {
+    "claude-sonnet-5": (2.00, 10.00),
+    "claude-haiku-4-5": (1.00, 5.00),
+}
+
+# Per-thread totals: Streamlit runs each session in its own thread, so concurrent
+# analyses don't mix their counts.
+_usage = threading.local()
+
+
+def _record_usage(model_id: str, usage: dict) -> None:
+    totals = getattr(_usage, "totals", None)
+    if totals is None:
+        totals = _usage.totals = {}
+    entry = totals.setdefault(model_id, {"calls": 0, "inputTokens": 0, "outputTokens": 0})
+    entry["calls"] += 1
+    entry["inputTokens"] += int(usage.get("inputTokens", 0))
+    entry["outputTokens"] += int(usage.get("outputTokens", 0))
+
+
+def usage_snapshot() -> dict:
+    return {model: dict(entry) for model, entry in (getattr(_usage, "totals", None) or {}).items()}
+
+
+def _price(model_id: str):
+    for key, price in PRICES_PER_MILLION.items():
+        if key in model_id:
+            return price
+    return None
+
+
+def usage_since(before: dict) -> dict:
+    """Token usage and estimated cost (USD) since a usage_snapshot()."""
+    models, total = {}, 0.0
+    for model, entry in usage_snapshot().items():
+        base = before.get(model, {})
+        delta = {k: entry[k] - base.get(k, 0) for k in ("calls", "inputTokens", "outputTokens")}
+        if not delta["calls"]:
+            continue
+        price = _price(model)
+        cost = (delta["inputTokens"] * price[0] + delta["outputTokens"] * price[1]) / 1e6 if price else None
+        models[model] = {**delta, "estimatedCostUSD": round(cost, 5) if cost is not None else None}
+        total += cost or 0.0
+    return {"models": models, "estimatedCostUSD": round(total, 5), "pricesNote": "estimate; verify Bedrock rates"}
+
+
+def merge_usage(first: dict, second: dict) -> dict:
+    models = {m: dict(v) for m, v in (first or {}).get("models", {}).items()}
+    for model, entry in (second or {}).get("models", {}).items():
+        target = models.setdefault(model, {"calls": 0, "inputTokens": 0, "outputTokens": 0, "estimatedCostUSD": 0.0})
+        for key in ("calls", "inputTokens", "outputTokens"):
+            target[key] += entry[key]
+        target["estimatedCostUSD"] = round((target.get("estimatedCostUSD") or 0) + (entry.get("estimatedCostUSD") or 0), 5)
+    total = round(sum(m.get("estimatedCostUSD") or 0 for m in models.values()), 5)
+    return {"models": models, "estimatedCostUSD": total, "pricesNote": "estimate; verify Bedrock rates"}
+
+
 @lru_cache(maxsize=None)
 def get_client(service: str = "bedrock-runtime"):
     """Cached boto3 client (also used for Textract)."""
@@ -132,6 +196,7 @@ def call_tool(
     except BotoCoreError as exc:  # timeouts, connection errors
         raise BedrockError(f"Could not reach Bedrock ({model_id}): {exc}") from exc
 
+    _record_usage(model_id, response.get("usage") or {})
     stop_reason = response.get("stopReason")
     if stop_reason == "max_tokens":
         # A truncated tool input may be partial; never treat it as complete.

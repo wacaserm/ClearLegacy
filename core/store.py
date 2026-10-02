@@ -72,7 +72,7 @@ def get_client(client_id: str) -> dict[str, Any]:
 
 def get_accounts(client_id: str) -> list[dict[str, Any]]:
 	client_id = _validate_identifier(client_id, "client_id")
-	client = get_client(client_id)
+	client = _JSON_FUNCTIONS["get_client"](client_id)  # stay on JSON when used as the fallback
 	nested = client.get("accounts")
 	if isinstance(nested, list):
 		return nested
@@ -173,3 +173,94 @@ def get_audit(client_id: str) -> list[dict[str, Any]]:
 	if not isinstance(history, list):
 		raise ValueError(f"Audit history is not a JSON list: {path}")
 	return history
+
+
+# --------------------------------------------------------------------------- backend selection
+# CLEARLEGACY_STORAGE=dynamodb routes these functions to core/store_dynamodb.py
+# (same names and return shapes). Any DynamoDB error falls back to the JSON
+# functions above with a visible warning. Default "json" is unchanged behavior.
+
+_JSON_FUNCTIONS = {
+	"get_clients": get_clients,
+	"get_client": get_client,
+	"get_accounts": get_accounts,
+	"save_findings": save_findings,
+	"log_decision": log_decision,
+	"get_audit": get_audit,
+}
+
+
+def _check_inputs(name: str, args: tuple, kwargs: dict) -> None:
+	"""Apply the JSON store's input validation before any backend runs."""
+	names = {
+		"get_client": ["client_id"],
+		"get_accounts": ["client_id"],
+		"get_audit": ["client_id"],
+		"save_findings": ["client_id", "analysis_id", "findings"],
+		"log_decision": ["client_id", "analysis_id", "finding_id", "decision", "user", "note"],
+	}.get(name, [])
+	values = dict(zip(names, args), **kwargs)
+	for key in ("client_id", "analysis_id", "finding_id"):
+		if key in values:
+			_validate_identifier(values[key], key)
+	if name == "save_findings" and not isinstance(values.get("findings"), list):
+		raise ValueError("findings must be a list.")
+	if name == "log_decision":
+		if not isinstance(values.get("decision"), str) or not values["decision"].strip():
+			raise ValueError("decision must be a non-empty string.")
+		if not isinstance(values.get("user"), str) or not values["user"].strip():
+			raise ValueError("user must be a non-empty string.")
+		if not isinstance(values.get("note"), str):
+			raise ValueError("note must be a string.")
+
+
+def _masked_write_args(name: str, args: tuple, kwargs: dict) -> tuple[tuple, dict]:
+	"""Mask PII in what gets stored (findings text, decision notes); IDs are kept."""
+	from .pii import mask_value
+
+	names = ["client_id", "analysis_id", "findings"] if name == "save_findings" else [
+		"client_id", "analysis_id", "finding_id", "decision", "user", "note"]
+	values = dict(zip(names, args), **kwargs)
+	if name == "save_findings":
+		values["findings"] = mask_value(values["findings"])
+	else:
+		values["note"] = mask_value(values["note"])
+	return (), values
+
+
+def _select_backend(name: str):
+	json_function = _JSON_FUNCTIONS[name]
+
+	def dispatch(*args, **kwargs):
+		from . import config
+
+		if name in {"save_findings", "log_decision"} and config.pii_masking():
+			args, kwargs = _masked_write_args(name, args, kwargs)
+		if config.storage() == "dynamodb":
+			_check_inputs(name, args, kwargs)
+			from . import store_dynamodb
+
+			try:
+				return getattr(store_dynamodb, name)(*args, **kwargs)
+			except store_dynamodb.StoreBackendError as exc:
+				config.aws_warning(f"DynamoDB unavailable; using local JSON storage ({exc}).")
+			except KeyError as exc:
+				if name not in {"get_client", "get_accounts"}:
+					raise
+				config.aws_warning(f"{exc.args[0]} in DynamoDB; using local JSON records (run infra/seed_dynamodb.py).")
+		return json_function(*args, **kwargs)
+
+	dispatch.__name__ = name
+	dispatch.__doc__ = json_function.__doc__
+	return dispatch
+
+
+for _name in _JSON_FUNCTIONS:
+	globals()[_name] = _select_backend(_name)
+
+
+def backend_name() -> str:
+	"""Configured storage backend ('json' or 'dynamodb'), for display."""
+	from . import config
+
+	return config.storage()

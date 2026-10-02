@@ -3,8 +3,14 @@ base = "light"
 primaryColor = "#147D78"
 backgroundColor = "#F7F9FC"
 secondaryBackgroundColor = "#FFFFFF"
+
 textColor = "#243447"
 font = "sans serif"
 
+borderColor = "#aec0d1"
+
+
+
+
 [theme.sidebar]
-backgroundColor = "#F2F5F8"
+backgroundColor = "#E8EFF7"

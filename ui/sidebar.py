@@ -3,8 +3,14 @@ import streamlit as st
 
 def render_sidebar(households, selected_client_id, backend):
     with st.sidebar:
-        st.markdown("### ClearLegacy")
+        logo_column, name_column = st.columns([1, 4], gap="small", vertical_alignment="bottom")
+        with logo_column:
+            st.image("ui/assets/clear-legacy-logo.png", width=50)
+        with name_column:
+            st.markdown("### ClearLegacy")
+        
         st.caption("Advisor review workspace")
+
         if not households:
             st.info("No fictional households or stored clients are available.")
             return None

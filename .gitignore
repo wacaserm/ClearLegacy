@@ -232,4 +232,7 @@ uploads/
 test_aws.py
 .venv/
 
+
+# macOS
 .DS_Store
+
