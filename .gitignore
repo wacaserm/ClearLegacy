@@ -232,3 +232,4 @@ uploads/
 test_aws.py
 .venv/
 
+.DS_Store
