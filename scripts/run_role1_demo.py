@@ -3,7 +3,7 @@ explain a sample finding, then run the optional AI conflict pass on Johnson.
 
 Usage: python scripts/run_role1_demo.py
 Requires AWS credentials in environment variables (region us-east-1).
-About 13 Bedrock calls per run.
+About 17 Bedrock calls per run.
 """
 
 import json
@@ -16,7 +16,8 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
 from core.bedrock_client import AWSCredentialsExpired  # noqa: E402
-from core.explain import explain, find_additional_conflicts  # noqa: E402
+from core.assistant import answer_question  # noqa: E402
+from core.explain import explain, find_additional_conflicts, summarize_case  # noqa: E402
 from core.extract import extract_document  # noqa: E402
 
 FIXTURES = ROOT / "tests" / "fixtures"
@@ -85,13 +86,28 @@ def main():
         ],
     }
     show("sample finding", sample)
-    show("explain(sample)", timed("explain (fast model)", explain, sample))
+    explained = timed("explain (fast model)", explain, sample)
+    show("explain(sample)", explained)
 
     johnson = [results[source_id] for _, _, source_id in JOHNSON]
     extra = timed(
         "find_additional_conflicts", find_additional_conflicts, johnson, data["client"], data["accounts"]
     )
     show("additional AI findings (verified)", extra)
+
+    findings = [{**sample, **explained}] + extra
+    show("summarize_case", timed("summarize_case (fast model)", summarize_case, data["client"], findings))
+
+    history = []
+    for question in [
+        "Which accounts aren't covered by the trust?",
+        "Who would act for Robert now that Thomas has died?",
+        "What is Robert's Social Security number?",
+    ]:
+        reply = timed(f"answer_question: {question}", answer_question,
+                      question, johnson, data["client"], data["accounts"], findings, history)
+        show(f"Q: {question}", reply)
+        history.append({"question": question, "answer": reply["answer"]})
 
 
 if __name__ == "__main__":

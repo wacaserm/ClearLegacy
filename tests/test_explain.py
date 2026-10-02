@@ -57,9 +57,17 @@ def test_combined_and_dotted_account_values():
     accounts = [{"accountId": "A", "todBeneficiaries": [
         {"name": "Linda Johnson", "relationship": "former spouse", "tier": "primary",
          "allocation": "100%", "recordedDate": "2009-05-11"}]}]
-    v = explain_mod._verify_account_evidence
+    v = explain_mod.verify_account_evidence
     assert v(_acct_ev("C", "trustedContact.name", "Thomas Johnson"), client, accounts)
     assert v(_acct_ev("A", "todBeneficiaries",
                       "Linda Johnson, former spouse, primary, 100%, recordedDate 2009-05-11"), client, accounts)
     assert not v(_acct_ev("A", "todBeneficiaries", "Linda Johnson, 50%"), client, accounts)
     assert not v(_acct_ev("C", "trustedContact.phone", "555"), client, accounts)
+
+
+def test_labeled_value_needs_exact_match():
+    accounts = [{"accountId": "A", "todBeneficiaries": [{"name": "Linda Johnson", "recordedDate": "2009-05-11"}]}]
+    v = explain_mod.verify_account_evidence
+    assert v(_acct_ev("A", "todBeneficiaries", "Linda Johnson, recorded 2009-05-11"), {}, accounts)
+    assert not v(_acct_ev("A", "todBeneficiaries", "Linda Johnson, recorded 2010-01-01"), {}, accounts)
+    assert not v(_acct_ev("A", "todBeneficiaries", "Linda Johnson, former spouse Carol"), {}, accounts)

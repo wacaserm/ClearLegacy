@@ -19,6 +19,7 @@ log = logging.getLogger(__name__)
 PROMPTS = Path(__file__).resolve().parent.parent / "prompts"
 EXPLANATION_PROMPT = (PROMPTS / "explanation.txt").read_text(encoding="utf-8")
 CONFLICTS_PROMPT = (PROMPTS / "conflicts.txt").read_text(encoding="utf-8")
+SUMMARY_PROMPT = (PROMPTS / "summary.txt").read_text(encoding="utf-8")
 
 # --------------------------------------------------------------------------- explain
 
@@ -50,10 +51,28 @@ def explain(finding: dict) -> dict:
         model_id=FAST_MODEL_ID,
         max_tokens=512,
     )
+    explanation = _first_sentences(result.get("explanation"), 2)
+    action = _first_sentences(result.get("recommendedAction"), 1)
+    if not explanation or not action:
+        log.warning("explain() got an empty field for %s; using safe fallback text", finding.get("findingId"))
     return {
-        "explanation": str(result.get("explanation", "")).strip(),
-        "recommendedAction": str(result.get("recommendedAction", "")).strip(),
+        "explanation": explanation or str(finding.get("title") or "").strip(),
+        "recommendedAction": action or DEFAULT_ACTION,
     }
+
+
+DEFAULT_ACTION = (
+    "Confirm the client's intentions and review this item with the client and their attorney "
+    "or other appropriate professional."
+)
+
+
+def _first_sentences(text, n: int) -> str:
+    """Trim model text to at most n sentences."""
+    if not isinstance(text, str):
+        return ""
+    sentences = re.split(r"(?<=[.!?])\s+", text.strip())
+    return " ".join(sentences[:n]).strip()
 
 
 # --------------------------------------------------------------------------- additional conflicts
@@ -114,7 +133,7 @@ def _resolve(record: dict, field: str):
     return value
 
 
-def _verify_document_evidence(ev: dict, facts_list: list[dict]) -> dict | None:
+def verify_document_evidence(ev: dict, facts_list: list[dict]) -> dict | None:
     for facts in facts_list:
         if facts.get("sourceId") != ev.get("sourceId"):
             continue
@@ -128,7 +147,7 @@ def _verify_document_evidence(ev: dict, facts_list: list[dict]) -> dict | None:
     return None
 
 
-def _verify_account_evidence(ev: dict, client: dict, accounts: list[dict]) -> dict | None:
+def verify_account_evidence(ev: dict, client: dict, accounts: list[dict]) -> dict | None:
     records = {a.get("accountId"): a for a in accounts}
     if client.get("clientId"):
         records[client["clientId"]] = client
@@ -147,7 +166,11 @@ def _verify_account_evidence(ev: dict, client: dict, accounts: list[dict]) -> di
             if piece.startswith(key + " ") or piece.startswith(key + ":"):
                 piece = piece[len(key) + 1:].strip(" :")
                 break
-        if piece and not any(piece in leaf for leaf in leaves):
+        if not piece or any(piece in leaf for leaf in leaves):
+            continue
+        # Allow a short label like "recorded 2009-05-11", but only if the rest is an exact value.
+        label = re.match(r"^[a-z]+(?: [a-z]+)? (.+)$", piece)
+        if not (label and label.group(1) in leaves):
             return None
     return {"sourceType": "account", "sourceId": ev["sourceId"], "field": field, "value": ev["value"]}
 
@@ -179,15 +202,23 @@ def find_additional_conflicts(facts_list: list[dict], client: dict, accounts: li
     )
 
     findings = []
-    for raw in result.get("findings", []):
+    raw_findings = result.get("findings")
+    for raw in raw_findings if isinstance(raw_findings, list) else []:
+        if not isinstance(raw, dict) or not isinstance(raw.get("evidence"), list):
+            log.warning("Skipped malformed AI finding")
+            continue
         evidence = []
-        for ev in raw.get("evidence", []):
+        for ev in raw["evidence"]:
+            if not isinstance(ev, dict):
+                evidence = []
+                break
             if ev.get("sourceType") == "account":
-                checked = _verify_account_evidence(ev, client, accounts)
+                checked = verify_account_evidence(ev, client, accounts)
             else:
-                checked = _verify_document_evidence(ev, facts_list)
+                checked = verify_document_evidence(ev, facts_list)
             if checked is None:
-                log.warning("Dropped AI finding %r: unverified evidence from %s", raw.get("title"), ev.get("sourceId"))
+                log.warning("Dropped AI finding %r: unverified evidence %s %s=%r", raw.get("title"),
+                            ev.get("sourceId"), ev.get("field"), ev.get("value") or ev.get("quote"))
                 evidence = []
                 break
             evidence.append(checked)
@@ -202,3 +233,51 @@ def find_additional_conflicts(facts_list: list[dict], client: dict, accounts: li
             }
         )
     return findings
+
+
+def verify_evidence(ev, facts_list: list[dict], client: dict, accounts: list[dict]) -> dict | None:
+    """Return the cleaned evidence item if it verifies, else None."""
+    if not isinstance(ev, dict):
+        return None
+    if ev.get("sourceType") == "account":
+        return verify_account_evidence(ev, client, accounts)
+    return verify_document_evidence(ev, facts_list)
+
+
+# --------------------------------------------------------------------------- case summary
+
+SUMMARY_SCHEMA = {
+    "type": "object",
+    "properties": {"summary": {"type": "string", "description": "At most 3 plain-English sentences."}},
+    "required": ["summary"],
+}
+
+NO_FINDINGS_SUMMARY = (
+    "No potential inconsistencies were flagged between the supplied documents and account records. "
+    "This covers only the documents and records provided."
+)
+
+
+def summarize_case(client: dict, findings: list[dict]) -> dict:
+    """Return {"summary": str}: a short advisor-facing overview of the findings (fast model)."""
+    if not findings:
+        return {"summary": NO_FINDINGS_SUMMARY}
+    shown = [
+        {k: f.get(k) for k in ("findingId", "priority", "title", "explanation") if f.get(k)}
+        for f in findings
+    ]
+    result = call_tool(
+        system=SUMMARY_PROMPT,
+        user_text=(
+            f"<client>{json.dumps({'name': client.get('name')})}</client>\n"
+            f"<findings>\n{json.dumps(shown, indent=2)}\n</findings>\n\n"
+            "Write the case summary using the write_case_summary tool."
+        ),
+        tool_name="write_case_summary",
+        tool_description="Write a short advisor-facing summary of review findings.",
+        schema=SUMMARY_SCHEMA,
+        model_id=FAST_MODEL_ID,
+        max_tokens=512,
+    )
+    summary = _first_sentences(result.get("summary"), 3)
+    return {"summary": summary or f"{len(findings)} item(s) flagged for review with the client and their attorney."}
