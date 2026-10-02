@@ -11,15 +11,14 @@ def apply_theme():
         --button-hover: #18564F;
         }
 
-        h1 { font-size: 2rem; }
+        h1, h2, h3 {
+            color: #00205B;
+        }
+        h1 { font-size: 1.75rem; }
         h2, h3 { font-size: 1.375rem; }
 
         [data-testid="stVerticalBlockBorderWrapper"] {
             border-radius: 11px;
-        }
-        
-        [data-testid="stSidebar"] {
-            background: #F2F5F8;
         }
 
         [data-testid="stCaptionContainer"] {

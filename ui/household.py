@@ -16,6 +16,7 @@ STATUS_LABELS = {
 
 def render_household(client, status):
     name = client.get("name") or client.get("clientName") or "Household"
+
     st.title(name)
     label, color = STATUS_LABELS.get(status, ("Not analyzed", "gray"))
     st.badge(label, color=color)

@@ -7,10 +7,10 @@ secondaryBackgroundColor = "#FFFFFF"
 textColor = "#243447"
 font = "sans serif"
 
-borderColor = "#D8E0E8"
+borderColor = "#aec0d1"
 
 
 
 
 [theme.sidebar]
-backgroundColor = "#F2F5F8"
+backgroundColor = "#E8EFF7"

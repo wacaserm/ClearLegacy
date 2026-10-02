@@ -8,7 +8,10 @@ def render_uploads(client_id, backend):
     planning_column, account_column = st.columns(2)
     with planning_column:
         with st.container(border=True):
-            st.markdown("**1. Planning documents**")
+            st.markdown(
+                '<span style="color: #1F6B63"><strong>1. Planning documents</strong></span>',
+                unsafe_allow_html=True,
+            )
             planning_files = st.file_uploader(
                 "Upload planning documents",
                 type=file_types,
@@ -17,7 +20,10 @@ def render_uploads(client_id, backend):
             )
     with account_column:
         with st.container(border=True):
-            st.markdown("**2. Account records**")
+            st.markdown(
+                '<span style="color: #1F6B63"><strong>2. Account records</strong></span>',
+                unsafe_allow_html=True,
+            )
             account_files = st.file_uploader(
                 "Upload account records",
                 type=file_types,
@@ -63,9 +69,9 @@ def render_analyze_button(client_id, documents, extraction_errors, backend, proc
         key=f"analyze_{client_id}",
     )
     if not documents:
-        st.caption("Select at least one document to enable analysis.")
+        st.caption("Analysis is unavailable. Select at least one document to enable analysis.")
     elif not pipeline_available:
-        st.caption("Analysis is unavailable until core.pipeline.analyze(client_id, documents) is connected.")
+        st.caption("Analysis is unavailable until the analysis pipeline is connected.")
     elif extraction_errors:
         st.caption("Resolve document extraction errors before analysis.")
     elif processing:
