@@ -40,7 +40,7 @@ EXPLAIN_SCHEMA = {
 
 
 def explain(finding: dict) -> dict:
-    """Return {"explanation": str, "recommendedAction": str} for a finding, using the fast model."""
+    """Return the finding with "explanation" and "recommendedAction" added (fast model)."""
     shown = {k: finding.get(k) for k in ("findingId", "priority", "title", "evidence")}
     result = call_tool(
         system=EXPLANATION_PROMPT,
@@ -55,7 +55,10 @@ def explain(finding: dict) -> dict:
     action = _first_sentences(result.get("recommendedAction"), 1)
     if not explanation or not action:
         log.warning("explain() got an empty field for %s; using safe fallback text", finding.get("findingId"))
+    # Return the finding with the two fields added, so callers that replace a
+    # finding with explain()'s result keep its id, title, priority, and evidence.
     return {
+        **finding,
         "explanation": explanation or str(finding.get("title") or "").strip(),
         "recommendedAction": action or DEFAULT_ACTION,
     }

@@ -144,19 +144,23 @@ Follows the shared contracts in the project guide. The AI only **extracts facts*
 | Function | Input | Output |
 |---|---|---|
 | `core.extract.extract_facts(document)` | document shape from `core/document_reader.read_document` | `{sourceId, docType, facts, warnings}` (not yet validated) |
-| `core.validation.validate_facts(facts, document)` | facts + the same document | unsupported facts removed and added to `warnings` as `{"code": "unsupported_fact", ...}`, wrong locations corrected |
-| `core.explain.explain(finding)` | guide finding (`findingId, priority, title, evidence`) | `{"explanation": "<=2 sentences", "recommendedAction": "1 sentence"}` (Haiku 4.5) |
+| `core.validation.validate_facts(facts, document)` | facts + the same document | unsupported facts removed (message in `warnings`, fact in `excludedFacts`), wrong locations corrected |
+| `core.explain.explain(finding)` | guide finding (`findingId, priority, title, evidence`) | the same finding plus `explanation` (<=2 sentences) and `recommendedAction` (1 sentence) (Haiku 4.5) |
 | `core.explain.find_additional_conflicts(facts_list, client, accounts)` | validated facts, client dict, accounts list | optional extra findings, all `priority: "review"`. Every evidence item must match a validated fact quote or an actual account field value, or the finding is dropped. |
 | `core.explain.summarize_case(client, findings)` | client dict, findings (with explanations) | `{"summary": "<=3 sentences"}` (Haiku 4.5). With no findings, returns a fixed "nothing flagged within supplied scope" sentence without calling the model. |
 | `core.assistant.answer_question(question, facts_list, client, accounts, findings=None, history=None)` | advisor question, validated facts, client, accounts, optional findings and prior turns `[{"question", "answer"}]` | `{"answer", "canAnswer", "citations": [evidence], "droppedCitations"}`. Read-only, with no tools that change anything. Citations are verified like AI findings, and a factual answer with no verified citation is withheld. |
 | `core.extract.load_document(path, doc_type, source_id)` | local `.pdf` or `.txt` (`=== PAGE N ===` separators) | the shared document shape, a stand-in until Role 3's reader is ready (no DOCX yet) |
 | `core.extract.extract_document(path, doc_type, source_id)` | local file | load + extract + validate, for scripts |
 
-Warning codes in `warnings`:
-- `no_readable_text`: empty document. Bedrock is not called.
-- `malformed_fact`: a model fact with an unknown field or a missing value, location or quote. It is skipped.
-- `malformed_output`: no fact list was returned.
-- `unsupported_fact`: the quote was not found in the document (from `validate_facts`).
+`warnings` is a list of plain-text messages, matching how `core/rules.py` and the pipeline use it. It covers:
+- an empty document (Bedrock is not called)
+- malformed model facts, which are skipped
+- a missing fact list
+- facts whose quote was not found in the document
+
+`validate_facts` also returns the excluded facts themselves in `excludedFacts`.
+
+`explain(finding)` returns the finding with `explanation` and `recommendedAction` added, so the pipeline can replace each finding with the result without losing its ID, title, priority or evidence.
 
 Bedrock failures (timeouts, truncated output, a missing or garbled tool result) raise `core.bedrock_client.BedrockError`, so the pipeline can show a failed status instead of a clean result.
 

@@ -49,7 +49,7 @@ def test_empty_document_returns_warning_without_model_call():
     out = extract_facts({"sourceId": "blank", "filename": "blank.pdf", "docType": "will",
                          "sections": [{"location": "page 1", "text": "  "}]})
     assert out["facts"] == []
-    assert out["warnings"][0]["code"] == "no_readable_text"
+    assert "No readable text" in out["warnings"][0]
 
 
 def test_combined_and_dotted_account_values():

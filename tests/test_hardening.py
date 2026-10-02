@@ -28,13 +28,13 @@ def test_malformed_facts_become_warnings(monkeypatch):
     assert out["facts"][1]["tier"] is None and out["facts"][1]["allocation"] is None
     assert set(out["facts"][0]) == {"field", "value", "location", "quote",
                                     "accountRef", "tier", "allocation", "relationship", "asOf"}
-    assert [w["code"] for w in out["warnings"]] == ["malformed_fact"] * 3
+    assert len(out["warnings"]) == 3 and all("Skipped malformed fact" in w for w in out["warnings"])
 
 
 def test_missing_fact_list_is_flagged(monkeypatch):
     monkeypatch.setattr(extract_mod, "call_tool", lambda **kw: {"docType": "will"})
     out = extract_mod.extract_facts(DOC)
-    assert out["facts"] == [] and out["warnings"][0]["code"] == "malformed_output"
+    assert out["facts"] == [] and "no fact list" in out["warnings"][0]
 
 
 class _FakeClient:
@@ -71,7 +71,10 @@ def test_string_tool_input_is_parsed_and_garbage_rejected(monkeypatch):
 def test_explain_trims_and_falls_back(monkeypatch):
     monkeypatch.setattr(explain_mod, "call_tool", lambda **kw: {
         "explanation": "One. Two. Three.", "recommendedAction": ""})
-    out = explain_mod.explain({"findingId": "F1", "title": "T", "evidence": []})
+    finding = {"findingId": "F1", "priority": "high", "title": "T", "evidence": [{"sourceType": "document"}]}
+    out = explain_mod.explain(finding)
+    # The pipeline replaces each finding with explain()'s result, so nothing may be lost.
+    assert {k: out[k] for k in finding} == finding
     assert out["explanation"] == "One. Two."
     assert out["recommendedAction"] == explain_mod.DEFAULT_ACTION
 

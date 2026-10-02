@@ -10,7 +10,7 @@ Rules:
 - Use intended_beneficiary only when the text ties a recipient to a specific account. A general residuary clause in a will is residuary_beneficiary, never an account-specific instruction.
 - Statements of intention are intentions, not completed changes. Record them as intended_beneficiary, not account_beneficiary.
 - account_beneficiary, account_registration, and account_owner are for designations a record says currently exist on an account.
-- Record explicit statements that information is absent, stale, or unconfirmed as missing_information, and statements that the client has not decided as unspecified_intention. Do not record general disclaimers (for example "these are stated intentions, not completed changes") as facts.
+- Record explicit statements that information is absent, stale, or unconfirmed as missing_information, and statements that the client has not decided as unspecified_intention. Do not record general disclaimers or scope notes as facts, for example "these are stated intentions, not completed changes" or "no legal documents have been reviewed". missing_information is only for specific account, beneficiary, or record data that is absent, stale, or unconfirmed.
 - tier applies only to account beneficiary designations and account-specific intentions. Leave it null for will and trust provisions.
 - Dates in value use YYYY-MM-DD when the full date is stated. States in value use the two-letter code.
 - You do not judge legal validity or give legal advice.

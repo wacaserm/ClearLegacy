@@ -32,7 +32,7 @@ def test_existing_quote_is_kept():
     fact = _fact("residuary_beneficiary", "Emily Johnson", "in equal shares to my children, EMILY Johnson", "page 1")
     out = validate_facts(_facts(fact), DOCUMENT)
     assert out["facts"] == [fact]
-    assert out["warnings"] == []
+    assert out["warnings"] == [] and out["excludedFacts"] == []
 
 
 def test_made_up_quote_is_dropped_with_warning():
@@ -41,8 +41,8 @@ def test_made_up_quote_is_dropped_with_warning():
     out = validate_facts(_facts(fake, real), DOCUMENT)
     assert [f["value"] for f in out["facts"]] == ["Thomas Johnson"]
     assert len(out["warnings"]) == 1
-    assert out["warnings"][0]["code"] == "unsupported_fact"
-    assert out["warnings"][0]["fact"]["value"] == "Linda Johnson"
+    assert isinstance(out["warnings"][0], str) and "Linda Johnson" in out["warnings"][0]
+    assert out["excludedFacts"][0]["value"] == "Linda Johnson"
 
 
 def test_wrong_location_is_corrected():

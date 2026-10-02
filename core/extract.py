@@ -157,11 +157,8 @@ def extract_facts(document: dict) -> dict:
             "docType": document.get("docType") or "other",
             "facts": [],
             "warnings": [
-                {
-                    "code": "no_readable_text",
-                    "message": f"No readable text in {document.get('filename') or source_id}. "
-                    "Upload a selectable-text file or run OCR.",
-                }
+                f"No readable text in {document.get('filename') or source_id}. "
+                "Upload a selectable-text file or run OCR."
             ],
         }
 
@@ -186,12 +183,12 @@ def extract_facts(document: dict) -> dict:
     for raw in raw_facts if isinstance(raw_facts, list) else []:
         fact, problem = _clean_fact(raw)
         if fact is None:
-            warnings.append({"code": "malformed_fact", "message": f"Skipped malformed fact from {source_id}: {problem}"})
+            warnings.append(f"Skipped malformed fact from {source_id}: {problem}")
             log.warning("Skipped malformed fact from %s: %s", source_id, problem)
         else:
             facts.append(fact)
     if not isinstance(raw_facts, list):
-        warnings.append({"code": "malformed_output", "message": f"Model returned no fact list for {source_id}"})
+        warnings.append(f"Model returned no fact list for {source_id}")
     return {
         "sourceId": source_id,
         "docType": doc_type if doc_type in DOC_TYPES else "other",

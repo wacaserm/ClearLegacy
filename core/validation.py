@@ -60,23 +60,22 @@ def locate_quote(quote: str, claimed_location, sections: list[dict]):
 def validate_facts(facts: dict, document: dict) -> dict:
     """Drop facts whose quote is not in the document and correct wrong locations.
 
-    Returns a copy of facts. Each dropped fact is added to "warnings" as
-    {"code": "unsupported_fact", "message": str, "fact": dict}.
+    Returns a copy of facts. Each dropped fact adds a plain-text message to
+    "warnings" and the fact itself to "excludedFacts".
     """
     out = copy.deepcopy(facts)
     sections = document.get("sections", [])
     warnings = list(out.get("warnings", []))
+    excluded = list(out.get("excludedFacts", []))
     kept = []
     for fact in out.get("facts", []):
         found = locate_quote(fact.get("quote") or "", fact.get("location"), sections)
         if found is None:
             warnings.append(
-                {
-                    "code": "unsupported_fact",
-                    "message": f"Excluded {fact.get('field')} '{fact.get('value')}': quote not found in {out.get('sourceId')}",
-                    "fact": fact,
-                }
+                f"Excluded unsupported fact ({fact.get('field')}: {fact.get('value')}): "
+                f"quote not found in {out.get('sourceId')}"
             )
+            excluded.append(fact)
             # Log field and source only; avoid raw document content in diagnostic logs.
             log.warning("Excluded unsupported %s fact from %s", fact.get("field"), out.get("sourceId"))
             continue
@@ -86,4 +85,5 @@ def validate_facts(facts: dict, document: dict) -> dict:
         kept.append(fact)
     out["facts"] = kept
     out["warnings"] = warnings
+    out["excludedFacts"] = excluded
     return out
