@@ -49,16 +49,20 @@ def render_uploads(client_id, backend):
             rows = []
             for document in documents:
                 preview = by_name.get(document["filename"])
-                tags = []
+                tags = [f'<span class="cl-chip">{esc(_type_label(document, preview))}</span>']
                 if preview and preview.get("ocrPages"):
-                    tags.append('<span class="cl-tag" title="Text recognized from a scanned page">Scanned: text recognized</span>')
+                    tags.append('<span class="cl-tag" title="Text recognized from a scanned page">Scanned</span>')
                 if document["filename"] in error_names:
-                    tags.append('<span class="cl-pill critical">Could not read</span>')
+                    state = '<span class="cl-pill critical">Could not read</span>'
                 elif preview and preview.get("status") not in (None, "ok"):
-                    tags.append(f'<span class="cl-pill high">{esc(str(preview.get("status")).replace("_", " "))}</span>')
+                    state = '<span class="cl-pill high">Needs a readable copy</span>'
+                elif preview:
+                    state = '<span class="cl-ready" aria-label="Ready">&#10003; Ready</span>'
+                else:
+                    state = '<span class="cl-small">Added</span>'
                 rows.append(
                     f'<div class="cl-file"><span class="cl-file-name">{esc(document["filename"])}</span>'
-                    f'<span class="cl-file-meta">{"".join(tags)}<span class="cl-small">{esc(_type_label(document, preview))}</span></span></div>'
+                    f'<span class="cl-file-meta">{"".join(tags)}{state}</span></div>'
                 )
             render('<div class="cl-files">' + "".join(rows) + "</div>")
         else:
@@ -66,17 +70,9 @@ def render_uploads(client_id, backend):
                    + (", plus scanned images through Textract" if any(t in file_types for t in ("png", "jpg")) else "")
                    + ".</p>")
 
-        if documents and not callable(getattr(backend.get("reader"), "read_document", None)):
-            render('<div class="cl-notice">Text previews are unavailable until the document reader is connected.</div>')
         for filename, message in extraction_errors:
-            render(f'<div class="cl-notice error"><b>{esc(filename)}</b>: {esc(message)}</div>')
-        if previews:
-            with st.expander("Preview extracted text and source locations"):
-                for filename, preview in by_name.items():
-                    st.markdown(f"**{filename}**")
-                    for section in preview.get("sections", []):
-                        st.caption(section.get("location", "Source location not provided"))
-                        st.text(section.get("text", ""))
+            render(f'<div class="cl-notice error"><b>{esc(filename)}</b> could not be read. '
+                   "Upload a text-based PDF or DOCX copy.</div>")
     return documents, previews, extraction_errors, card
 
 

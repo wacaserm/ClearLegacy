@@ -143,6 +143,9 @@ html body .cl-file { display: flex; align-items: center; justify-content: space-
   padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 html body .cl-file-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 html body .cl-file-meta { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+html body .cl-chip { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;
+  color: var(--brand); background: #EEF2F8; white-space: nowrap; }
+html body .cl-ready { font-size: 12px; font-weight: 500; color: var(--clear); white-space: nowrap; }
 
 /* ---- Stat tiles ------------------------------------------------------------ */
 html body .cl-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
