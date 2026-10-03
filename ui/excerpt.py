@@ -27,8 +27,10 @@ def find_context(quote, source_id, location, documents) -> str | None:
         ordered = [s for s in sections if s.get("location") == location] + \
                   [s for s in sections if s.get("location") != location]
         for section in ordered:
-            text = _squash(section.get("text"))
-            if needle in text.lower():
+            # Keep line breaks (they mark document lines) but tidy spaces within each line.
+            lines = [" ".join(line.split()) for line in str(section.get("text") or "").splitlines() if line.strip()]
+            text = "\n".join(lines)
+            if needle in " ".join(text.split()).lower():
                 return text
     return None
 
@@ -36,31 +38,33 @@ def find_context(quote, source_id, location, documents) -> str | None:
 def highlight_html(context, quote) -> str:
     """Escaped passage with the quote wrapped in <mark>; the quote alone if it isn't in the passage.
 
-    Matching is case-insensitive and whitespace-normalized. All text is escaped before the
-    highlight markup is inserted, because document text is untrusted.
+    Matching is case-insensitive and whitespace-normalized. The passage keeps one sentence or
+    document line before and after the quote. All text is escaped before the highlight markup
+    is inserted, because document text is untrusted.
     """
     quote_text = _squash(quote)
-    context_text = _squash(context)
-    start = context_text.lower().find(quote_text.lower()) if quote_text and context_text else -1
+    lined = "\n".join(" ".join(line.split()) for line in str(context or "").splitlines() if line.strip())
+    flat = lined.replace("\n", " ")  # same length as `lined`, so positions line up
+    start = flat.lower().find(quote_text.lower()) if quote_text and flat else -1
     if start < 0:
         return f'<mark class="cl-hl">{esc(quote_text)}</mark>'
     end = start + len(quote_text)
-    left = context_text[max(0, start - CONTEXT_CHARS):start]
-    right = context_text[end:end + CONTEXT_CHARS]
-    # Start at a sentence boundary before the quote, and end at one after it, when there is one.
-    # Keep one full sentence before the quote: ignore the boundary that ends right at the quote.
-    head = left.rstrip()[:-1]
-    cut = max(head.rfind(". "), head.rfind("? "), head.rfind("! "))
-    if cut >= 0:
-        left = left[cut + 2:]
-    elif start > CONTEXT_CHARS:
-        left = "…" + left[left.find(" ") + 1:] if " " in left else "…" + left
-    stop = min([i for i in (right.find(". "), right.find("? "), right.find("! ")) if i >= 0] or [-1])
-    if stop >= 0:
-        right = right[:stop + 1] + (" …" if end + stop + 1 < len(context_text) else "")
-    elif len(context_text) - end > CONTEXT_CHARS:
-        right = right[:right.rfind(" ")] + "…" if " " in right else right + "…"
-    return f'{esc(left)}<mark class="cl-hl">{esc(context_text[start:end])}</mark>{esc(right)}'
+
+    def boundaries(text):
+        return [i + 1 for i, ch in enumerate(text) if ch == "\n"] + \
+               [m.end() for m in re.finditer(r"[.?!]\s", text)]
+
+    before = [b for b in boundaries(lined[:start]) if b < start - 1]  # ignore the boundary right at the quote
+    left_start = max(before) if before else 0  # start of the line or sentence before the quote
+    left_start = max(left_start, start - CONTEXT_CHARS)
+    after = [b for b in boundaries(lined[end:]) if b > 1]
+    right_end = end + (min(after) if after else len(lined) - end)
+    right_end = min(right_end, end + CONTEXT_CHARS)
+    left = flat[left_start:start]
+    right = flat[end:right_end].rstrip()
+    prefix = "… " if left_start > 0 else ""
+    suffix = " …" if right_end < len(flat) else ""
+    return f'{esc(prefix + left)}<mark class="cl-hl">{esc(flat[start:end])}</mark>{esc(right + suffix)}'
 
 
 def short_title(title, limit=72) -> str:

@@ -37,7 +37,7 @@ def render_finding_actions(client_id, analysis_id, finding_id, existing_decision
     with reviewer_column:
         reviewer = st.text_input("Reviewer (optional)", key=f"reviewer_{key}", placeholder="Name")
     event = None
-    columns = st.columns([1, 1, 1.4, 3])
+    columns = st.columns([1, 1, 1.6, 1.2])
     for column, (label, decision) in zip(columns, DECISIONS):
         with column:
             if compat.button(label, key=f"action_{decision}_{key}", stretch=True,
