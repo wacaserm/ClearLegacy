@@ -3,6 +3,7 @@ import streamlit as st
 from services import gui_adapter
 from ui import compat
 from ui.html import DOC_TYPE_LABELS, esc, render
+from ui.state import upload_key
 
 
 def _type_label(document, preview):
@@ -24,7 +25,7 @@ def render_uploads(client_id, backend):
         render('<p class="cl-label">Estate documents · will, trust, POA, planning summary</p>')
         planning_files = st.file_uploader(
             "Estate documents", type=file_types, accept_multiple_files=True,
-            key=f"planning_uploads_{client_id}", label_visibility="collapsed",
+            key=upload_key(client_id), label_visibility="collapsed",
         )
 
         documents = [{"filename": file.name, "file_bytes": file.getvalue(), "category": "planning"}

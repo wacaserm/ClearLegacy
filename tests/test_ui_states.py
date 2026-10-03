@@ -305,3 +305,35 @@ def test_clarifying_questions_in_next_steps_and_client_download():
     attorney = build_summary_html("attorney", "Jordan Morgan", LIVE, groups, "Alex Advisor")
     assert "Questions to ask the client" in client and "No successor agent named in the POA" in client
     assert "Questions to ask the client" not in attorney
+
+
+MISMATCH = {"analysisId": "analysis-mismatch", "status": "client_mismatch", "findings": [], "clarificationQuestions": [],
+            "warnings": [], "clientMismatch": [{"fileName": "planning_summary.pdf", "nameFound": "Sam <b>Patel</b>",
+                                                "expectedName": "Jordan Morgan"}]}
+
+
+def test_client_mismatch_state_hides_everything_from_the_run():
+    stopped = {"analysisId": "analysis-mismatch", "findingId": "client-check", "decision": "analysis_stopped",
+               "note": "Analysis stopped: planning_summary.pdf appears to belong to another client (Sam Patel).",
+               "reviewer": "system", "timestamp": "2026-10-03T08:00", "persistence": "Persistently saved"}
+    at = _run(status="client_mismatch", result=copy.deepcopy(MISMATCH), history=[stopped], reviewer="Alex Advisor")
+    html = _html(at)
+    assert "Stopped: wrong client?" in html and "Remove the document and upload the correct client" in html
+    assert "planning_summary.pdf" in html and "Jordan Morgan" in html
+    assert "Sam &lt;b&gt;Patel&lt;/b&gt;" in html and "<b>Patel</b>" not in html  # escaped
+    for hidden in ("Who gets what", "No issue found", "Clarifying questions", "Questions to ask the client"):
+        assert hidden not in html, hidden
+    assert "No next steps. The analysis was stopped" in html
+    assert not at.get("download_button")
+    assert any(b.label == "Remove these documents" for b in at.button)
+    assert "Analysis stopped" in html and "appears to belong to another client" in html  # history event
+    assert "Stopped: client mismatch" in [b.proto.label for b in at.get("badge")] or "Stopped: client mismatch" in str(at)
+
+
+def test_remove_these_documents_resets_the_household():
+    at = _run(status="client_mismatch", result=copy.deepcopy(MISMATCH))
+    next(b for b in at.button if b.label == "Remove these documents").click().run()
+    assert not at.exception
+    ws = at.session_state["clearlegacy_ui"]["workspaces"]["morgan"]
+    assert ws["status"] == "not_analyzed" and ws["current_analysis_id"] is None
+    assert "No analysis yet" in _html(at)

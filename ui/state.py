@@ -10,6 +10,7 @@ CURRENT_ANALYSIS_STATUSES = {
     "review_needed",
     "no_discrepancies_found",
     "needs_information",
+    "client_mismatch",
 }
 
 
@@ -143,6 +144,38 @@ def save_decision(client_id, analysis_id, finding_id, decision, note, reviewer, 
     workspace["decisions"][key] = record
     workspace["history"].insert(0, record)
     return record
+
+
+def record_event(client_id, analysis_id, event, note, reviewer, persistence):
+    """Add a system event (not a finding decision) to the household's session history."""
+    record = {
+        "analysisId": analysis_id,
+        "findingId": "client-check",
+        "decision": event,
+        "note": note,
+        "reviewer": reviewer,
+        "timestamp": datetime.now().astimezone().isoformat(timespec="minutes"),
+        "persistence": persistence.get("status", "Session-only"),
+        "error": persistence.get("error"),
+    }
+    get_workspace(client_id)["history"].insert(0, record)
+    return record
+
+
+def upload_key(client_id):
+    """Widget key for the household's uploader; bumping the round clears the selected files."""
+    round_ = st.session_state.get(f"clearlegacy_upload_round_{client_id}", 0)
+    return f"planning_uploads_{client_id}" + (f"_{round_}" if round_ else "")
+
+
+def clear_uploads(client_id):
+    """Drop this household's selected files and the stopped analysis (history is kept)."""
+    round_key = f"clearlegacy_upload_round_{client_id}"
+    st.session_state.pop(upload_key(client_id), None)
+    st.session_state[round_key] = st.session_state.get(round_key, 0) + 1
+    workspace = get_workspace(client_id)
+    workspace.update(status="not_analyzed", current_analysis_id=None, upload_fingerprint=fingerprint_documents([]),
+                     processing=False, error=None, notice=None)
 
 
 def set_notice(client_id, message):

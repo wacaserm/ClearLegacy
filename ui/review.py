@@ -15,6 +15,7 @@ DECISION_LABELS = {
     "dismissed": ("Dismissed", "neutral"),
     "attorney_review": ("Flagged for attorney review", "review"),
     "needs_follow_up": ("Needs follow-up", "high"),  # decisions recorded before the redesign
+    "analysis_stopped": ("Analysis stopped", "critical"),  # wrong-client safety check
     "confirm": ("Confirmed", "clear"),
     "dismiss": ("Dismissed", "neutral"),
 }

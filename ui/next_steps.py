@@ -80,6 +80,10 @@ def render_next_steps(client_name, analysis, workspace, audit, reviewer, sample=
         _empty("Run an analysis and record decisions. Confirmed items, items for the attorney, and "
                "documented dismissals will be organized here.")
         return
+    if analysis.get("status") == "client_mismatch":
+        _empty("No next steps. The analysis was stopped because the documents may belong to another client, "
+               "so nothing from that run is listed here or included in a download.")
+        return
     groups = group_findings(analysis, workspace, audit)
     questions = clarifying_questions(analysis)
     names = analysis.get("sourceNames") or {}

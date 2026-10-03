@@ -9,6 +9,7 @@ from typing import Any, Callable
 
 from . import config, store
 from .document_reader import read_document
+from .identity import check_identity
 
 
 def _load_function(module_name: str, function_name: str) -> tuple[Callable[..., Any] | None, str | None]:
@@ -42,6 +43,47 @@ def _store_in_s3(document: dict[str, Any], client_id: str, filename: str, conten
 		document.update(store_upload(client_id, filename, content))
 	except S3StorageError as exc:
 		config.aws_warning(f"S3 storage unavailable; continuing locally ({exc}).")
+
+
+def _other_household_accounts(client_id: str) -> set[str]:
+	"""Account IDs on file for every other household; empty if the store can't list them."""
+	ids: set[str] = set()
+	try:
+		for other in store.get_clients():
+			other_id = other.get("clientId") or other.get("id")
+			if not other_id or other_id == client_id:
+				continue
+			ids.update(str(a.get("accountId")) for a in store.get_accounts(other_id) or [] if a.get("accountId"))
+	except Exception:
+		return set()
+	return ids
+
+
+def _quarantine_uploads(documents: list[dict[str, Any]], filenames: set[str]) -> None:
+	"""Remove the S3 copy of mismatched uploads (that exact version), or tag it quarantined.
+
+	The bucket is versioned, so deleting the version restores the household's earlier file
+	under the same key instead of leaving another client's document as the current copy.
+	"""
+	from .bedrock_client import get_client
+
+	for document in documents:
+		key, bucket = document.get("s3Key"), document.get("s3Bucket")
+		if document.get("filename") not in filenames or not key or not bucket:
+			continue
+		version = {"VersionId": document["s3VersionId"]} if document.get("s3VersionId") else {}
+		try:
+			get_client("s3").delete_object(Bucket=bucket, Key=key, **version)
+			continue
+		except Exception:
+			pass
+		try:
+			get_client("s3").put_object_tagging(
+				Bucket=bucket, Key=key, **version,
+				Tagging={"TagSet": [{"Key": "clearlegacy-status", "Value": "quarantined-client-mismatch"}]},
+			)
+		except Exception as exc:
+			config.aws_warning(f"Could not remove or quarantine the S3 copy of {document.get('filename')} ({exc.__class__.__name__}).")
 
 
 def _validated_facts(validation: Any) -> tuple[dict[str, Any] | None, list[str]]:
@@ -153,6 +195,18 @@ def _analyze(client_id: str, documents: list[Any], progress: Callable[..., Any] 
 	if len(validated) != len(parsed_documents):
 		result["warnings"].append("One or more documents did not produce validated facts; comparison was not completed.")
 		return result
+
+	# Wrong-client safety check: stop before the rules if a document belongs to another household.
+	identity = check_identity(
+		[(document.get("filename", "document"), facts) for document, facts in zip(parsed_documents, validated)],
+		client, accounts, _other_household_accounts(client_id),
+	)
+	result["warnings"].extend(identity["warnings"])
+	if identity["mismatches"]:
+		_quarantine_uploads(parsed_documents, {m["fileName"] for m in identity["mismatches"]})
+		result["status"] = "client_mismatch"
+		result["clientMismatch"] = identity["mismatches"]
+		return result  # no rules, explanations, summary, or saved findings
 
 	_report(progress, "comparing", f"{len(accounts)} account record(s)")
 	reconciliation = functions["reconcile"](validated, client, accounts)
