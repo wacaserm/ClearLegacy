@@ -278,3 +278,30 @@ def test_download_buttons_render_on_next_steps(tmp_path, monkeypatch):
     at = _run(status="review_needed", result=copy.deepcopy(LIVE), reviewer="Alex Advisor")
     labels = [e.proto.label for e in at.get("download_button")]
     assert "Download attorney review summary" in labels and "Download client follow-up list" in labels
+
+
+def test_only_estate_document_upload_and_accounts_on_file_caption():
+    at = _run()
+    assert [u.proto.label for u in at.get("file_uploader")] == ["Estate documents"]
+    html = _html(at)
+    assert "Accounts on file" in html
+    assert ("From the firm&#x27;s account records (demo data), as of 2026-09-28. "
+            "Estate documents are read only when you click Analyze.") in html or \
+           ("From the firm's account records (demo data), as of 2026-09-28. "
+            "Estate documents are read only when you click Analyze.") in html
+    assert "account records above" not in html
+
+
+def test_clarifying_questions_in_next_steps_and_client_download():
+    from ui.next_steps import build_summary_html, group_findings
+    at = _run(status="review_needed", result=copy.deepcopy(LIVE), reviewer="Alex Advisor")
+    follow_up = _next_steps_sections(at)["Follow up with the client"]
+    assert "Questions to ask the client" in follow_up and "No successor agent named in the POA" in follow_up
+    # The client download is available with questions alone (no confirmed findings yet).
+    client_button = next(e for e in at.get("download_button") if e.proto.label == "Download client follow-up list")
+    assert not client_button.proto.disabled
+    groups = group_findings(LIVE, {"decisions": {}}, [])
+    client = build_summary_html("client", "Jordan Morgan", LIVE, groups, "Alex Advisor")
+    attorney = build_summary_html("attorney", "Jordan Morgan", LIVE, groups, "Alex Advisor")
+    assert "Questions to ask the client" in client and "No successor agent named in the POA" in client
+    assert "Questions to ask the client" not in attorney

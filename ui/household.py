@@ -61,7 +61,12 @@ def _contingent_cell(account):
 
 
 def render_account_details(accounts):
-    render('<p class="cl-label" style="margin-top:24px">Accounts</p>')
+    render('<p class="cl-label" style="margin-top:24px">Accounts on file</p>')
+    if accounts:
+        snapshots = sorted({a.get("snapshotDate") for a in accounts if a.get("snapshotDate")})
+        as_of = f", as of {snapshots[-1]}" if snapshots else ""
+        render(f'<p class="cl-small" style="margin:-2px 0 8px">From the firm\'s account records (demo data){esc(as_of)}. '
+               "Estate documents are read only when you click Analyze.</p>")
     if not accounts:
         render('<div class="cl-notice">No account records are available from the configured store. '
                'Account details are never inferred from document filenames.</div>')

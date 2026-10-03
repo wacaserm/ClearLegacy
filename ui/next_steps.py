@@ -49,6 +49,11 @@ def group_findings(analysis, workspace, audit):
     return groups
 
 
+def clarifying_questions(analysis):
+    """The analysis's clarifying questions as plain strings (blank entries dropped)."""
+    return [" ".join(str(q).split()) for q in (analysis or {}).get("clarificationQuestions", []) or [] if str(q).strip()]
+
+
 def _who_when(decision):
     when = str((decision or {}).get("timestamp", ""))[:16].replace("T", " ")
     who = (decision or {}).get("reviewer") or "Reviewer not recorded"
@@ -76,6 +81,7 @@ def render_next_steps(client_name, analysis, workspace, audit, reviewer, sample=
                "documented dismissals will be organized here.")
         return
     groups = group_findings(analysis, workspace, audit)
+    questions = clarifying_questions(analysis)
     names = analysis.get("sourceNames") or {}
     documents = analysis.get("documents") or []
     if sample:
@@ -100,7 +106,7 @@ def render_next_steps(client_name, analysis, workspace, audit, reviewer, sample=
             data=build_summary_html("client", client_name, analysis, groups, reviewer),
             file_name=_file_name(client_name, "client-follow-up"),
             mime="text/html", key="download_client", stretch=True,
-            disabled=not groups["confirmed"],
+            disabled=not (groups["confirmed"] or questions),
         )
 
     render('<p class="cl-section" style="margin-top:24px">Follow up with the client</p>')
@@ -115,6 +121,10 @@ def render_next_steps(client_name, analysis, workspace, audit, reviewer, sample=
             body += f'<div class="cl-kv"><p class="cl-label">Recommended next step</p>{quote_text(finding["recommendedAction"])}</div>'
         body += _decision_line(decision)
         _item(finding, decision, body)
+    if questions:
+        render('<div class="cl-card" style="margin-bottom:12px"><p class="cl-label">Questions to ask the client</p>'
+               '<ul style="margin:6px 0 0;padding-left:20px">'
+               + "".join(f'<li style="margin:2px 0">{esc(q)}</li>' for q in questions) + "</ul></div>")
 
     render('<p class="cl-section" style="margin-top:24px">For the client\'s attorney</p>')
     if not groups["attorney_review"]:
@@ -203,6 +213,7 @@ def build_summary_html(kind, client_name, analysis, groups, reviewer) -> str:
     """Printable HTML for the attorney meeting ('attorney') or the client follow-up list ('client')."""
     attorney = kind == "attorney"
     items = groups["attorney_review"] if attorney else groups["confirmed"]
+    questions = [] if attorney else clarifying_questions(analysis)
     names = analysis.get("sourceNames") or {}
     title = "Attorney review summary" if attorney else "Client follow-up list"
     purpose = ("Prepared by ClearLegacy for review with the client's attorney" if attorney
@@ -213,7 +224,7 @@ def build_summary_html(kind, client_name, analysis, groups, reviewer) -> str:
              f"<h1>{e(title)}: {e(client_name or 'Household')}</h1>",
              f'<p class="meta">{e(purpose)}<br>Date: {datetime.now().strftime("%B %d, %Y")} · '
              f"Reviewer: {e(reviewer or 'Not recorded')} · {len(items)} item{'s' if len(items) != 1 else ''}</p>"]
-    if not items:
+    if not items and not questions:
         parts.append("<p>No items yet.</p>")
     for finding, decision in items:
         priority = PRIORITY_NAMES[priority_key(finding.get("priority"))]
@@ -230,5 +241,8 @@ def build_summary_html(kind, client_name, analysis, groups, reviewer) -> str:
         block.append(f'<p class="label">Advisor note</p><p>{e(note) if note else "No note"}</p>'
                      f'<p class="who">Decided by {e(_who_when(decision))}</p></div>')
         parts.append("".join(block))
+    if questions:
+        parts.append('<div class="item"><h2 style="margin-top:2px">Questions to ask the client</h2><ul>'
+                     + "".join(f"<li>{e(q)}</li>" for q in questions) + "</ul></div>")
     parts.append(f"<footer>{e(FOOTER)}</footer></body></html>")
     return "".join(parts)

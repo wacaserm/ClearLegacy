@@ -57,7 +57,7 @@ def render_assistant(client_id, client, accounts, analysis, workspace, source):
         render('<div class="cl-notice sample">Questions are available for live analyses only, not sample results.</div>')
         return
 
-    render('<p class="cl-small" style="margin:0 0 12px">Answers use only this analysis and the supplied account records, '
+    render('<p class="cl-small" style="margin:0 0 12px">Answers use only this analysis and the accounts on file, '
            "and cite their sources. Read-only: nothing is changed or sent. Not legal advice.</p>")
     names = analysis.get("sourceNames") or {}
     chats = workspace.setdefault("chat", {})

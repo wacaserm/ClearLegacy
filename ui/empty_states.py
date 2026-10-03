@@ -20,11 +20,11 @@ def render_analysis_state(status, error, client_id, sample_available):
               "The selected documents changed after the last analysis. Click Analyze to review the current files.")
         return False
     if status == "processing":
-        _card("Analysis in progress", "Reading documents and comparing them with the account records…")
+        _card("Analysis in progress", "Reading documents and comparing them with the accounts on file…")
         return False
     if status == "not_analyzed":
         _card("No analysis yet",
-              "Add the client's planning documents and account records above, then click Analyze. "
+              "Add the client's estate documents above, then click Analyze. "
               "Each finding will show the document quote next to the account record it conflicts with.")
         if sample_available:
             render('<p class="cl-small" style="margin-top:12px">The analysis pipeline is not connected in this '

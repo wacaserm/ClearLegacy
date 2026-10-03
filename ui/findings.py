@@ -105,7 +105,7 @@ def _tiles(findings, questions, decided):
 
 
 _STATUS_NOTICE = {
-    "no_discrepancies_found": ("ok", "No discrepancies found within the supplied documents and account records."),
+    "no_discrepancies_found": ("ok", "No discrepancies found between the supplied documents and the accounts on file."),
     "needs_information": ("warn", "More information is needed to complete this review. See the questions below."),
     "review_needed": ("", "Review each finding with the client, then record a decision."),
 }
