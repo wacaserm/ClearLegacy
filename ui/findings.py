@@ -6,6 +6,7 @@ from ui.html import (
     PRIORITY_ORDER, esc, format_percentage, humanize_field, parse_record_value,
     priority_key, priority_pill, quote_text, render,
 )
+from ui.aws_status import advisor_message, remember_technical
 from ui.review import decision_label, render_finding_actions
 
 _MD_SPECIAL = re.compile(r"([\\`*_\[\]<>#|~])")
@@ -107,30 +108,6 @@ _STATUS_NOTICE = {
 }
 
 
-def _footer(analysis):
-    usage = analysis.get("usage") or {}
-    models = usage.get("models") or {}
-    parts = []
-    if models:
-        names = []
-        for model in models:
-            if "sonnet" in model:
-                names.append("Claude Sonnet 5")
-            elif "haiku" in model:
-                names.append("Claude Haiku 4.5")
-            else:
-                names.append(model)
-        parts.append("Models: " + ", ".join(dict.fromkeys(names)) + " on Amazon Bedrock")
-    if analysis.get("elapsedSeconds") is not None:
-        parts.append(f"Time: {analysis['elapsedSeconds']:.0f}s")
-    if usage.get("estimatedCostUSD") is not None and models:
-        tokens = sum(m.get("inputTokens", 0) + m.get("outputTokens", 0) for m in models.values())
-        parts.append(f"Tokens: {tokens:,}")
-        parts.append(f"Est. cost: ${usage['estimatedCostUSD']:.3f} (estimate)")
-    if parts:
-        render('<div class="cl-footer">' + "".join(f"<span>{esc(p)}</span>" for p in parts) + "</div>")
-
-
 # --------------------------------------------------------------------------- findings
 
 def render_findings(client_id, analysis, workspace, sample=False):
@@ -159,8 +136,15 @@ def render_findings(client_id, analysis, workspace, sample=False):
                f'<p style="font-size:14px;line-height:1.6">{quote_text(analysis["summary"])}</p>'
                '<p class="cl-small" style="margin-top:8px">AI-generated from the findings below. Review the evidence before acting.</p></div>')
 
+    shown = []
     for warning in analysis.get("warnings", []) or []:
-        render(f'<div class="cl-notice warn">{esc(warning)}</div>')
+        message = advisor_message(warning)  # AWS fallbacks get advisor wording; detail goes to System details
+        if message:
+            remember_technical(warning)
+        message = message or warning
+        if message not in shown:
+            shown.append(message)
+            render(f'<div class="cl-notice warn">{esc(message)}</div>')
 
     event = None
     if findings:
@@ -210,5 +194,4 @@ def render_findings(client_id, analysis, workspace, sample=False):
         for i, question in enumerate(questions):
             st.checkbox(md_escape(question), key=f"question_{analysis_id}_{i}")
 
-    _footer(analysis)
     return event

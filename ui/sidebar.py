@@ -1,7 +1,7 @@
 import streamlit as st
 
 from ui import compat
-from ui.aws_status import render_aws_status_sidebar
+from ui.aws_status import render_sidebar_footer
 from ui.html import STATUS_PILLS, esc, render
 from ui.state import select_household
 
@@ -50,6 +50,6 @@ def render_sidebar(households, selected_client_id, backend, statuses=None):
         render('<div class="cl-sidebar-foot"></div>')
         if missing:
             render(f'<p class="cl-small">Not connected: {esc(", ".join(missing))}</p>')
-        render_aws_status_sidebar()
+        render_sidebar_footer()
         render('<p class="cl-small" style="margin-top:8px">Findings support advisor review and are not legal advice.</p>')
         return selected
