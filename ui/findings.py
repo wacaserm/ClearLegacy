@@ -202,12 +202,7 @@ def render_findings(client_id, analysis, workspace, sample=False):
                     event = render_finding_actions(client_id, analysis_id, finding_id, decision.get("decision"), sample) or event
             else:
                 event = render_finding_actions(client_id, analysis_id, finding_id, None, sample) or event
-            with st.expander("Technical identifiers"):
-                st.code(
-                    f"analysisId: {analysis_id}\nfindingId:  {finding_id}\nsources:    "
-                    + ", ".join(str(e.get("sourceId")) for e in evidence if isinstance(e, dict)),
-                    language=None,
-                )
+            
 
     if questions:
         render('<p class="cl-section" style="margin-top:24px">Clarifying questions</p>'
