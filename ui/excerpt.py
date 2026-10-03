@@ -4,7 +4,8 @@ import re
 
 from ui.html import esc
 
-CONTEXT_CHARS = 220  # characters of surrounding text to show on each side, at most
+CONTEXT_CHARS = 220  # characters after the quote, at most
+LEFT_CHARS = 60  # characters before the quote, at most
 
 
 def _squash(text) -> str:
@@ -38,32 +39,36 @@ def find_context(quote, source_id, location, documents) -> str | None:
 def highlight_html(context, quote) -> str:
     """Escaped passage with the quote wrapped in <mark>; the quote alone if it isn't in the passage.
 
-    Matching is case-insensitive and whitespace-normalized. The passage keeps one sentence or
-    document line before and after the quote. All text is escaped before the highlight markup
-    is inserted, because document text is untrusted.
+    Matching is case-insensitive and whitespace-normalized. Context is sentence-based (PDF line
+    breaks often fall mid-sentence): up to LEFT_CHARS before the quote, starting at a sentence
+    when one begins in that window, and through the end of the next sentence after it.
+    All text is escaped before the highlight markup is inserted; document text is untrusted.
     """
     quote_text = _squash(quote)
-    lined = "\n".join(" ".join(line.split()) for line in str(context or "").splitlines() if line.strip())
-    flat = lined.replace("\n", " ")  # same length as `lined`, so positions line up
+    flat = _squash(context)
     start = flat.lower().find(quote_text.lower()) if quote_text and flat else -1
     if start < 0:
         return f'<mark class="cl-hl">{esc(quote_text)}</mark>'
     end = start + len(quote_text)
 
-    def boundaries(text):
-        return [i + 1 for i, ch in enumerate(text) if ch == "\n"] + \
-               [m.end() for m in re.finditer(r"[.?!]\s", text)]
+    window_start = max(0, start - LEFT_CHARS)
+    left = flat[window_start:start]
+    head = left.rstrip()
+    head = head[:-1] if head.endswith((".", "?", "!")) else head  # ignore the sentence end right at the quote
+    sentence_starts = [m.end() for m in re.finditer(r"[.?!]\s+", head)]
+    if sentence_starts:
+        left = left[sentence_starts[-1]:]
+        prefix = ""
+    elif window_start > 0:
+        left = left[left.find(" ") + 1:] if " " in left else left
+        prefix = "… "
+    else:
+        prefix = ""
 
-    before = [b for b in boundaries(lined[:start]) if b < start - 1]  # ignore the boundary right at the quote
-    left_start = max(before) if before else 0  # start of the line or sentence before the quote
-    left_start = max(left_start, start - CONTEXT_CHARS)
-    after = [b for b in boundaries(lined[end:]) if b > 1]
-    right_end = end + (min(after) if after else len(lined) - end)
-    right_end = min(right_end, end + CONTEXT_CHARS)
-    left = flat[left_start:start]
-    right = flat[end:right_end].rstrip()
-    prefix = "… " if left_start > 0 else ""
-    suffix = " …" if right_end < len(flat) else ""
+    after = flat[end:end + CONTEXT_CHARS]
+    stop = re.search(r"[.?!](\s|$)", after)
+    right = after[: stop.end()].rstrip() if stop else (after[: after.rfind(" ")] if " " in after else after)
+    suffix = " …" if end + len(right) < len(flat) - 1 else ""
     return f'{esc(prefix + left)}<mark class="cl-hl">{esc(flat[start:end])}</mark>{esc(right + suffix)}'
 
 
