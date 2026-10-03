@@ -6,7 +6,10 @@ from ui.html import (
     PRIORITY_ORDER, esc, format_percentage, humanize_field, parse_record_value,
     priority_key, priority_pill, quote_text, render,
 )
+from ui import compat
 from ui.aws_status import advisor_message, remember_technical
+from ui.excerpt import find_context, highlight_html, short_title
+from ui.overview import render_overview
 from ui.review import decision_label, render_finding_actions
 
 _MD_SPECIAL = re.compile(r"([\\`*_\[\]<>#|~])")
@@ -110,7 +113,66 @@ _STATUS_NOTICE = {
 
 # --------------------------------------------------------------------------- findings
 
-def render_findings(client_id, analysis, workspace, sample=False):
+def comparison_html(evidence, names=None, documents=None) -> str:
+    """Evidence comparison: document excerpt (quote highlighted in context) next to what is on file."""
+    names = names or {}
+    evidence = [e for e in evidence if isinstance(e, dict)]
+    docs = [e for e in evidence if e.get("sourceType") == "document"]
+    accounts = [e for e in evidence if e.get("sourceType") == "account"]
+    excerpts = []
+    for item in docs:
+        source = item.get("filename") or names.get(item.get("sourceId")) or "Document"
+        location = item.get("location") or "location not supplied"
+        context = find_context(item.get("quote"), item.get("sourceId"), item.get("location"), documents)
+        body = highlight_html(context or "", item.get("quote") or item.get("value") or "")
+        excerpts.append(f'<div class="cl-page"><div class="cl-page-head">{esc(source)} · {esc(location)}</div>'
+                        f'<p class="cl-page-body">{body}</p></div>')
+    left = "".join(excerpts) or '<p class="cl-muted">No document excerpt supplied.</p>'
+    right = "".join(_account_block(e) for e in accounts) or '<p class="cl-muted">No account record supplied.</p>'
+    mismatch = bool(docs and accounts)
+    mark = ('<div class="cl-ledger-mark" role="img" aria-label="Does not match" title="Does not match">≠</div>'
+            if mismatch else '<div class="cl-ledger-mark match" aria-hidden="true">·</div>')
+    return ('<div class="cl-ledger excerpt">'
+            f'<div class="cl-ledger-col document"><p class="cl-label">Document excerpt</p>{left}</div>'
+            f"{mark}"
+            f'<div class="cl-ledger-col account"><p class="cl-label">On file</p>{right}</div>'
+            "</div>")
+
+
+def default_selection(findings, decisions, analysis_id):
+    """First undecided critical finding, else first undecided, else the first."""
+    def finding_id(index, finding):
+        return finding.get("findingId", f"finding-{index + 1}")
+    undecided = [(i, f) for i, f in findings if f"{analysis_id}:{finding_id(i, f)}" not in decisions]
+    for i, f in undecided:
+        if priority_key(f.get("priority")) == "critical":
+            return finding_id(i, f)
+    if undecided:
+        return finding_id(*undecided[0])
+    return finding_id(*findings[0]) if findings else None
+
+
+def _header(client_name, findings, questions, decided):
+    counts = {"critical": 0, "high": 0, "review": 0}
+    for _, finding in findings:
+        counts[priority_key(finding.get("priority"))] += 1
+    items = len(findings)
+    chips = "".join(f'<span class="cl-pill {k}">{esc(PRIORITY_LABELS_PLURAL[k])}: {counts[k]}</span>'
+                    for k in ("critical", "high", "review") if counts[k])
+    text = f"{items} item{'s' if items != 1 else ''} to review" if items else "No items to review"
+    if questions:
+        text += f" · {len(questions)} question{'s' if len(questions) != 1 else ''} for the client"
+    render('<div class="cl-results-head">'
+           f'<div><p class="cl-label" style="margin:0 0 2px">Review</p><p class="cl-section" style="margin:0">'
+           f'{esc(client_name or "Household")} · {esc(text)}</p></div>'
+           f'<div class="cl-results-meta">{chips}<span class="cl-small">Decisions made '
+           f'<b class="cl-num">{decided} of {items}</b></span></div></div>')
+
+
+PRIORITY_LABELS_PLURAL = {"critical": "Critical", "high": "High", "review": "Review"}
+
+
+def render_findings(client_id, analysis, workspace, sample=False, client_name=None, accounts=None):
     if not analysis:
         return None
     findings = sorted(
@@ -120,19 +182,21 @@ def render_findings(client_id, analysis, workspace, sample=False):
     questions = analysis.get("clarificationQuestions", []) or []
     analysis_id = analysis.get("analysisId", "unknown-analysis")
     names = analysis.get("sourceNames") or {}
+    documents = analysis.get("documents") or []
     decisions = _decisions_for(analysis_id, [f for _, f in findings], workspace)
 
     if sample:
         render('<div class="cl-notice sample"><b>Sample results.</b> These fictional findings were not produced '
                "from your uploaded files and are shown for demonstration only.</div>")
+    _header(client_name, findings, questions, len(decisions))
     tone, text = _STATUS_NOTICE.get(analysis.get("status"), ("", ""))
-    if text:
+    if text and analysis.get("status") != "review_needed":
         render(f'<div class="cl-notice {tone}">{esc(text)}</div>')
 
-    _tiles([f for _, f in findings], questions, len(decisions))
+    render_overview(accounts or [], [f for _, f in findings], names)
 
     if analysis.get("summary"):
-        render('<div class="cl-card quiet"><p class="cl-label">Case summary</p>'
+        render('<div class="cl-card quiet" style="margin-top:16px"><p class="cl-label">Case summary</p>'
                f'<p style="font-size:14px;line-height:1.6">{quote_text(analysis["summary"])}</p>'
                '<p class="cl-small" style="margin-top:8px">AI-generated from the findings below. Review the evidence before acting.</p></div>')
 
@@ -148,50 +212,63 @@ def render_findings(client_id, analysis, workspace, sample=False):
 
     event = None
     if findings:
-        render(f'<p class="cl-section" style="margin-top:24px">Findings <span class="cl-small">· {len(findings)}</span></p>')
+        select_key = f"clearlegacy_selected_{analysis_id}"
+        ids = [f.get("findingId", f"finding-{i + 1}") for i, f in findings]
+        if st.session_state.get(select_key) not in ids:
+            st.session_state[select_key] = default_selection(findings, decisions, analysis_id)
+        selected = st.session_state[select_key]
+
+        render('<p class="cl-section" style="margin-top:24px">Items to review</p>')
+        list_column, detail_column = st.columns([1, 2.3], gap="large")
+        with list_column:
+            for position, (index, finding) in enumerate(findings):
+                finding_id = ids[position]
+                decision = decisions.get(f"{analysis_id}:{finding_id}")
+                state = decision_label(decision.get("decision"))[0] if decision else "Open"
+                label = (f"**{PRIORITY_LABELS_PLURAL[priority_key(finding.get('priority'))]}** · {state}\n"
+                         f"{md_escape(short_title(finding.get('title', 'Finding'), 64))}")
+                key = f"pickactive_{position}" if finding_id == selected else f"pick_{position}"
+                if compat.button(label, key=key, stretch=True) and finding_id != selected:
+                    st.session_state[select_key] = finding_id
+                    st.rerun()
+
+        position = ids.index(selected)
+        index, finding = findings[position]
+        decision = decisions.get(f"{analysis_id}:{selected}")
+        with detail_column:
+            with st.container(key=f"settled_detail" if decision else "finding_detail"):
+                head = priority_pill(finding.get("priority"))
+                if decision:
+                    label, tone_ = decision_label(decision.get("decision"))
+                    head += f' <span class="cl-pill {esc(tone_)} plain">{esc(label)}</span>'
+                render(f'<div class="cl-finding-head">{head}</div>'
+                       f'<p class="cl-finding-title">{quote_text(finding.get("title", "Finding"))}</p>')
+                render(f'<p class="cl-finding-body" style="margin-top:8px">{quote_text(finding.get("explanation", "No explanation was provided."))}</p>')
+                follow_up = finding.get("followUpQuestion") or finding.get("clarificationQuestion")
+                if follow_up:
+                    render(f'<div class="cl-kv"><p class="cl-label">Ask the client</p>{quote_text(follow_up)}</div>')
+                if finding.get("recommendedAction"):
+                    render(f'<div class="cl-kv"><p class="cl-label">Recommended next step</p>{quote_text(finding["recommendedAction"])}</div>')
+                evidence = finding.get("evidence", [])
+                render(comparison_html(evidence if isinstance(evidence, list) else [], names, documents))
+                if decision:
+                    reviewer = decision.get("reviewer")
+                    parts = [str(decision.get("timestamp", ""))[:16].replace("T", " ")]
+                    if reviewer and reviewer != "Not provided":
+                        parts.insert(0, reviewer)
+                    if decision.get("note"):
+                        parts.append(f"Note: {decision['note']}")
+                    render(f'<p class="cl-small">{quote_text(" · ".join(p for p in parts if p))}</p>')
+                    with st.expander("Change decision"):
+                        event = render_finding_actions(client_id, analysis_id, selected, decision.get("decision"), sample) or event
+                else:
+                    event = render_finding_actions(client_id, analysis_id, selected, None, sample) or event
     elif analysis.get("status") == "review_needed" and not questions:
         render('<div class="cl-notice">The analysis requested review but returned no findings.</div>')
-
-    for position, (index, finding) in enumerate(findings):
-        finding_id = finding.get("findingId", f"finding-{index + 1}")
-        decision = decisions.get(f"{analysis_id}:{finding_id}")
-        container_key = f"settled_{position}" if decision else f"finding_{position}"
-        with st.container(key=container_key):
-            head = priority_pill(finding.get("priority"))
-            if decision:
-                label, tone = decision_label(decision.get("decision"))
-                head += f' <span class="cl-pill {esc(tone)} plain">{esc(label)}</span>'
-            render(f'<div class="cl-finding-head">{head}</div>'
-                   f'<p class="cl-finding-title">{quote_text(finding.get("title", "Finding"))}</p>')
-            render(f'<p class="cl-finding-body" style="margin-top:8px">{quote_text(finding.get("explanation", "No explanation was provided."))}</p>')
-            if finding.get("recommendedAction"):
-                render(f'<div class="cl-kv"><p class="cl-label">Recommended action</p>{quote_text(finding["recommendedAction"])}</div>')
-            follow_up = finding.get("followUpQuestion") or finding.get("clarificationQuestion")
-            if follow_up:
-                render(f'<div class="cl-kv"><p class="cl-label">Follow-up question</p>{quote_text(follow_up)}</div>')
-
-            evidence = finding.get("evidence", [])
-            render(ledger_html(evidence if isinstance(evidence, list) else [], names))
-
-            if decision:
-                note = decision.get("note")
-                reviewer = decision.get("reviewer")
-                parts = [str(decision.get("timestamp", ""))[:16].replace("T", " ")]
-                if reviewer and reviewer != "Not provided":
-                    parts.insert(0, reviewer)
-                if note:
-                    parts.append(f"Note: {note}")
-                render(f'<p class="cl-small">{quote_text(" · ".join(p for p in parts if p))}</p>')
-                with st.expander("Change decision"):
-                    event = render_finding_actions(client_id, analysis_id, finding_id, decision.get("decision"), sample) or event
-            else:
-                event = render_finding_actions(client_id, analysis_id, finding_id, None, sample) or event
-            
 
     if questions:
         render('<p class="cl-section" style="margin-top:24px">Clarifying questions</p>'
                '<p class="cl-small" style="margin:-4px 0 8px">Tick each question once it has been raised with the client.</p>')
         for i, question in enumerate(questions):
             st.checkbox(md_escape(question), key=f"question_{analysis_id}_{i}")
-
     return event

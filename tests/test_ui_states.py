@@ -72,18 +72,50 @@ def test_empty_state_each_household(household):
     assert [t.label for t in at.tabs] == ["Findings", "Ask ClearLegacy", "Review history"]
 
 
-def test_live_result_renders_sorted_findings_ledger_and_footer():
+def test_live_result_master_detail_comparison_and_details():
     decided = {"analysis-test:F-high": {"analysisId": "analysis-test", "findingId": "F-high", "decision": "confirmed",
                                         "note": "Spoke with client", "reviewer": "Advisor", "timestamp": "2026-10-02T20:00"}}
     at = _run(status="review_needed", result=copy.deepcopy(LIVE), decisions=decided, show_details=True)
+    picks = [b.label for b in at.button if b.key and b.key.startswith("pick")]
+    assert [p.split("**")[1] for p in picks] == ["Critical", "High", "Review"]  # sorted by priority
+    assert "Confirmed" in picks[1] and "Open" in picks[0]  # decided state shown in the list
     html = _html(at)
-    assert html.index("TOD differs") < html.index("POA agent") < html.index("governed by FL")  # critical, high, review
-    assert "Document says" in html and "Account record says" in html and "≠" in html
+    assert "3 items to review" in html and "1 of 3" in html
+    assert "Document excerpt" in html and "On file" in html and "≠" in html
+    assert "TOD differs" in html  # default selection: first undecided critical
     assert "Avery Morgan" in html and "50%" in html  # account JSON shown as readable rows
-    assert "1 of 3" in html  # decisions tile
-    assert "Confirmed" in html and "Est. cost" in html and "Claude Sonnet 5" in html
     assert XSS not in html and "&lt;script&gt;" in html  # untrusted text is escaped
+    assert "Who gets what" in html and "Est. cost" in html and "Claude Sonnet 5" in html
     assert any(c.label.startswith("No successor agent") for c in at.checkbox)
+
+
+def test_selecting_a_finding_switches_the_detail():
+    at = _run(status="review_needed", result=copy.deepcopy(LIVE))
+    review_button = next(b for b in at.button if b.key and b.key.startswith("pick") and "**Review**" in b.label)
+    review_button.click().run()
+    assert not at.exception
+    html = _html(at)
+    assert "governed by the laws of Florida" in html  # the review finding's excerpt is now shown
+
+
+def test_excerpt_highlights_quote_in_context_and_escapes():
+    from ui.excerpt import find_context, highlight_html
+    docs = [{"sourceId": "s1", "sections": [
+        {"location": "page 1", "text": "Intro.\n\nI give the residue  of my estate to <b>Casey</b> Morgan. End."}]}]
+    context = find_context("i give the residue of my estate to <b>casey</b>", "s1", "page 1", docs)
+    html = highlight_html(context, "i give the residue of my estate to <b>casey</b>")
+    assert '<mark class="cl-hl">I give the residue of my estate to &lt;b&gt;Casey&lt;/b&gt;</mark>' in html
+    assert html.startswith("Intro.") and "<b>" not in html
+    assert highlight_html(None, "<script>x</script>") == '<mark class="cl-hl">&lt;script&gt;x&lt;/script&gt;</mark>'
+
+
+def test_who_gets_what_statuses():
+    from ui.overview import account_status
+    findings = [{"priority": "critical", "title": "TOD issue for DEMO-MORGAN-BROKERAGE", "evidence": []},
+                {"priority": "review", "title": "x", "evidence": [{"sourceType": "account", "sourceId": "DEMO-MORGAN-IRA"}]}]
+    assert account_status("DEMO-MORGAN-BROKERAGE", findings)[0] == "mismatch"
+    assert account_status("DEMO-MORGAN-IRA", findings)[0] == "review"
+    assert account_status("DEMO-OTHER", findings)[0] == "none"
 
 
 def test_sample_result_is_labeled():

@@ -42,13 +42,32 @@ button, input, textarea, select { font-family: var(--font); }
 [data-testid="stAppViewContainer"] { background: var(--bg); color: var(--text); }
 /* :where() keeps this at zero specificity so cl-* classes always win. */
 :where([data-testid="stMarkdownContainer"]) :where(p, li) { font-size: 14px; line-height: 1.55; }
-h1, h2, h3, h4 { font-family: var(--font); color: var(--text); letter-spacing: -0.01em; }
+h1, h2, h3, h4 { font-family: var(--font); font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
+/* One family for the interface: Inter everywhere (Streamlit widgets set their own font, so this
+   rule is page-wide). Material icons keep their icon font. Georgia is re-applied below only for
+   document excerpts and the client name. */
+html body .stApp *:not([data-testid="stIconMaterial"]):not([class*="material-symbols"]):not([class*="material-icons"]) {
+  font-family: var(--font); }
+html body .stApp .cl-page-body, html body .stApp .cl-page-body *, html body .stApp .cl-serif {
+  font-family: Georgia, 'Times New Roman', serif !important; }
+html body .cl-title, html body .cl-section, html body .cl-finding-title { font-weight: 600; }
 html body .cl-num, html body .cl-table td.num { font-variant-numeric: tabular-nums; }
 
 /* ---- Hide Streamlit chrome ------------------------------------------------ */
-[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
-[data-testid="stMainMenu"], [data-testid="stAppDeployButton"], .stDeployButton,
-footer, #MainMenu { display: none !important; visibility: hidden !important; }
+/* The header stays in the page (Streamlit renders the sidebar's reopen button inside it),
+   but it is invisible and click-through; only the parts we don't want are removed. */
+[data-testid="stHeader"] { background: transparent !important; height: 0 !important; min-height: 0 !important;
+  box-shadow: none !important; pointer-events: none; }
+[data-testid="stDecoration"], [data-testid="stMainMenu"], [data-testid="stAppDeployButton"], .stDeployButton,
+[data-testid="stStatusWidget"], [data-testid="stToolbarActions"], footer, #MainMenu {
+  display: none !important; visibility: hidden !important; }
+[data-testid="stExpandSidebarButton"] {
+  position: fixed; top: 12px; left: 12px; z-index: 1000; pointer-events: auto;
+  background: var(--bg) !important; border: 1px solid var(--line) !important; border-radius: 8px !important;
+  width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06); }
+[data-testid="stExpandSidebarButton"]:hover { background: var(--surface) !important; }
+[data-testid="stExpandSidebarButton"]:focus-visible { outline: 2px solid var(--brand) !important; outline-offset: 2px; }
 
 /* ---- Layout --------------------------------------------------------------- */
 [data-testid="stMainBlockContainer"], .block-container {
@@ -143,6 +162,9 @@ html body .cl-file { display: flex; align-items: center; justify-content: space-
   padding: 8px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 html body .cl-file-name { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 html body .cl-file-meta { display: flex; gap: 8px; align-items: center; flex-shrink: 0; }
+html body .cl-chip { display: inline-block; padding: 1px 8px; border-radius: 4px; font-size: 12px; font-weight: 500;
+  color: var(--brand); background: #EEF2F8; white-space: nowrap; }
+html body .cl-ready { font-size: 12px; font-weight: 500; color: var(--clear); white-space: nowrap; }
 
 /* ---- Stat tiles ------------------------------------------------------------ */
 html body .cl-tiles { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 16px 0; }
@@ -174,6 +196,30 @@ html body .cl-finding-body { font-size: 14px; color: var(--text); line-height: 1
 html body .cl-kv { font-size: 14px; color: var(--text); margin: 0 0 12px 0; }
 html body .cl-kv .cl-label { margin-bottom: 4px; }
 html body .cl-decision { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--text-2); margin: 4px 0 8px; }
+
+/* ---- Results header, finding list, document excerpt --------------------- */
+html body .cl-results-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end;
+  gap: 12px; padding: 4px 0 16px; border-bottom: 1px solid var(--line); margin: 8px 0 8px; }
+html body .cl-results-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+[class*="st-key-pick"] button { width: 100%; justify-content: flex-start; text-align: left; background: var(--bg);
+  border: 1px solid var(--line); padding: 10px 12px; min-height: 0; margin-bottom: 4px; }
+[class*="st-key-pick"] button:hover { background: var(--surface); border-color: #C9CED6; }
+[class*="st-key-pick"] button p { font-size: 13px; margin: 0; white-space: pre-line; text-align: left; line-height: 1.45; }
+[class*="st-key-pick"] button > div, [class*="st-key-pick"] button [data-testid="stMarkdownContainer"] {
+  justify-content: flex-start; width: 100%; text-align: left; }
+[class*="st-key-pickactive_"] button { border-color: var(--brand); box-shadow: inset 3px 0 0 var(--brand); background: #F5F7FB; }
+[class*="st-key-finding_detail"], [class*="st-key-settled_detail"] {
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 24px 12px; background: var(--bg); }
+[class*="st-key-settled_detail"] { background: var(--surface); }
+html body .cl-page { background: #FFFFFF; border: 1px solid var(--line); border-radius: 6px; margin: 0 0 12px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); }
+html body .cl-page-head { font-family: var(--font); font-size: 12px; color: var(--text-2); padding: 8px 14px;
+  border-bottom: 1px solid var(--line); background: var(--surface); border-radius: 6px 6px 0 0; }
+html body .cl-ledger.excerpt { grid-template-columns: minmax(0, 1.5fr) 36px minmax(0, 1fr); }
+html body .cl-page-body { font-family: Georgia, 'Times New Roman', serif; font-size: 15px; line-height: 1.7;
+  color: var(--text); margin: 0; padding: 14px 16px; overflow-wrap: anywhere; }
+html body mark.cl-hl { background: #FFF3B0; color: var(--text); padding: 1px 2px; border-left: 3px solid var(--brand);
+  border-radius: 2px; }
 
 /* ---- Evidence ledger (signature element) ---------------------------------- */
 html body .cl-ledger { display: grid; grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr); align-items: stretch;
