@@ -39,6 +39,8 @@ The same pipeline can also be deployed as a private API on AWS Lambda (IAM-authe
 
 > ClearLegacy supports advisor and attorney review. It does not provide legal advice.
 
+[Download the ClearLegacy demo](demo/ClearLegacyDemo.mp4)
+
 ## Running ClearLegacy
 
 Open a terminal (PowerShell on Windows) in the ClearLegacy repository folder and
