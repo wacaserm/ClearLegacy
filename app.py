@@ -210,6 +210,8 @@ with findings_tab:
             current_analysis,
             workspace,
             sample=source == "sample",
+            client_name=client.get("name"),
+            accounts=accounts,
         )
 
 with ask_tab:

@@ -178,6 +178,29 @@ html body .cl-kv { font-size: 14px; color: var(--text); margin: 0 0 12px 0; }
 html body .cl-kv .cl-label { margin-bottom: 4px; }
 html body .cl-decision { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--text-2); margin: 4px 0 8px; }
 
+/* ---- Results header, finding list, document excerpt --------------------- */
+html body .cl-results-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-end;
+  gap: 12px; padding: 4px 0 16px; border-bottom: 1px solid var(--line); margin: 8px 0 8px; }
+html body .cl-results-meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+[class*="st-key-pick"] button { width: 100%; justify-content: flex-start; text-align: left; background: var(--bg);
+  border: 1px solid var(--line); padding: 10px 12px; min-height: 0; margin-bottom: 4px; }
+[class*="st-key-pick"] button:hover { background: var(--surface); border-color: #C9CED6; }
+[class*="st-key-pick"] button p { font-size: 13px; margin: 0; white-space: pre-line; text-align: left; line-height: 1.45; }
+[class*="st-key-pick"] button > div, [class*="st-key-pick"] button [data-testid="stMarkdownContainer"] {
+  justify-content: flex-start; width: 100%; text-align: left; }
+[class*="st-key-pickactive_"] button { border-color: var(--brand); box-shadow: inset 3px 0 0 var(--brand); background: #F5F7FB; }
+[class*="st-key-finding_detail"], [class*="st-key-settled_detail"] {
+  border: 1px solid var(--line); border-radius: var(--radius); padding: 20px 24px 12px; background: var(--bg); }
+[class*="st-key-settled_detail"] { background: var(--surface); }
+html body .cl-page { background: #FFFFFF; border: 1px solid var(--line); border-radius: 6px; margin: 0 0 12px;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); }
+html body .cl-page-head { font-family: var(--font); font-size: 12px; color: var(--text-2); padding: 8px 14px;
+  border-bottom: 1px solid var(--line); background: var(--surface); border-radius: 6px 6px 0 0; }
+html body .cl-page-body { font-family: Georgia, 'Times New Roman', serif; font-size: 15px; line-height: 1.7;
+  color: var(--text); margin: 0; padding: 14px 16px; overflow-wrap: anywhere; }
+html body mark.cl-hl { background: #FFF3B0; color: var(--text); padding: 1px 2px; border-left: 3px solid var(--brand);
+  border-radius: 2px; }
+
 /* ---- Evidence ledger (signature element) ---------------------------------- */
 html body .cl-ledger { display: grid; grid-template-columns: minmax(0, 1fr) 40px minmax(0, 1fr); align-items: stretch;
   border: 1px solid var(--line); border-radius: var(--radius); margin: 4px 0 16px; overflow: hidden; }
