@@ -225,7 +225,7 @@ Only services verified live on Oct 2, 2026, in the workshop account (us-east-1):
 | **Amazon S3** | Encrypted (SSE-S3), private, versioned storage of uploaded documents | Uploads stored under `clients/<clientId>/` with `ServerSideEncryption: AES256`; public access block and versioning confirmed |
 | **Amazon DynamoDB** (on-demand) | Clients, accounts, findings, decisions, append-only audit log | Records identical to the JSON store; an attempt to overwrite an audit entry was refused by DynamoDB |
 | **Amazon Comprehend** | PII masking of stored notes, findings and logs | A stored decision note was saved with `[PHONE]`, `[SSN]`, `[EMAIL]` in place of the values; names and account IDs were kept |
-| **AWS Lambda** (Function URL, IAM auth) | Runs the full analysis pipeline as a private API | A signed request returned the correct Morgan and Patel results; an unsigned request got HTTP 403 |
+| **AWS Lambda** (Function URL, IAM auth) | Runs the full analysis pipeline as a private API | A signed request returned the correct Morgan and Patel results; an unsigned request got HTTP 403. Redeployed Oct 3: Patel's summary sent for Morgan returned `client_mismatch` and its S3 copy was removed |
 | **AWS IAM / STS** | Least-privilege Lambda role; temporary workshop credentials | Role created by `deploy_lambda.py`; identity checked by `check_setup.py` |
 
 Not used: API Gateway (30-second limit), Step Functions, and any always-on
