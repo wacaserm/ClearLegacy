@@ -1,5 +1,28 @@
 # ClearLegacy
 
+**Helping advisors spot gaps between estate planning intentions and account records.**
+
+ClearLegacy helps financial advisors review a client’s estate planning documents alongside their account records. It highlights potential inconsistencies, shows the supporting evidence, and helps advisors track what needs follow-up.
+
+
+## Why ClearLegacy?
+
+Estate planning documents and account records can fall out of sync as families and circumstances change. A client may intend to leave an IRA to their current spouse while the account still names a former spouse. A trust may describe an account that remains registered individually.
+
+ClearLegacy helps advisors identify these differences and prepare informed conversations with clients and their attorneys.
+
+## Features
+
+- **Review documents together:** Upload planning documents and account records for a household review.
+- **Spot potential inconsistencies:** Identify beneficiary mismatches, missing beneficiaries, and other details that need attention.
+- **See supporting evidence:** Compare what the planning document says with what appears in the account record.
+- **Get a clear summary:** Understand the key findings and suggested follow-up questions.
+- **Ask follow-up questions:** Explore the supplied documents through answers linked to their sources.
+- **Track review decisions:** Confirm, dismiss, or flag findings for attorney review, with notes and review history.
+- **Identify missing information:** Get clarification questions when the documents do not provide enough detail.
+
+> ClearLegacy supports advisor and attorney review. It does not provide legal advice.
+
 ## Running ClearLegacy
 
 Open a terminal (PowerShell on Windows) in the ClearLegacy repository folder and
