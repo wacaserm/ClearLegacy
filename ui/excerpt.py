@@ -4,7 +4,7 @@ import re
 
 from ui.html import esc
 
-CONTEXT_CHARS = 420  # characters of surrounding text to show on each side, at most
+CONTEXT_CHARS = 220  # characters of surrounding text to show on each side, at most
 
 
 def _squash(text) -> str:
@@ -47,9 +47,18 @@ def highlight_html(context, quote) -> str:
     end = start + len(quote_text)
     left = context_text[max(0, start - CONTEXT_CHARS):start]
     right = context_text[end:end + CONTEXT_CHARS]
-    if start > CONTEXT_CHARS:
+    # Start at a sentence boundary before the quote, and end at one after it, when there is one.
+    # Keep one full sentence before the quote: ignore the boundary that ends right at the quote.
+    head = left.rstrip()[:-1]
+    cut = max(head.rfind(". "), head.rfind("? "), head.rfind("! "))
+    if cut >= 0:
+        left = left[cut + 2:]
+    elif start > CONTEXT_CHARS:
         left = "…" + left[left.find(" ") + 1:] if " " in left else "…" + left
-    if len(context_text) - end > CONTEXT_CHARS:
+    stop = min([i for i in (right.find(". "), right.find("? "), right.find("! ")) if i >= 0] or [-1])
+    if stop >= 0:
+        right = right[:stop + 1] + (" …" if end + stop + 1 < len(context_text) else "")
+    elif len(context_text) - end > CONTEXT_CHARS:
         right = right[:right.rfind(" ")] + "…" if " " in right else right + "…"
     return f'{esc(left)}<mark class="cl-hl">{esc(context_text[start:end])}</mark>{esc(right)}'
 

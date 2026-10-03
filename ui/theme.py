@@ -196,6 +196,7 @@ html body .cl-page { background: #FFFFFF; border: 1px solid var(--line); border-
   box-shadow: 0 1px 2px rgba(16, 24, 40, 0.04); }
 html body .cl-page-head { font-family: var(--font); font-size: 12px; color: var(--text-2); padding: 8px 14px;
   border-bottom: 1px solid var(--line); background: var(--surface); border-radius: 6px 6px 0 0; }
+html body .cl-ledger.excerpt { grid-template-columns: minmax(0, 1.5fr) 36px minmax(0, 1fr); }
 html body .cl-page-body { font-family: Georgia, 'Times New Roman', serif; font-size: 15px; line-height: 1.7;
   color: var(--text); margin: 0; padding: 14px 16px; overflow-wrap: anywhere; }
 html body mark.cl-hl { background: #FFF3B0; color: var(--text); padding: 1px 2px; border-left: 3px solid var(--brand);

@@ -132,7 +132,7 @@ def comparison_html(evidence, names=None, documents=None) -> str:
     mismatch = bool(docs and accounts)
     mark = ('<div class="cl-ledger-mark" role="img" aria-label="Does not match" title="Does not match">≠</div>'
             if mismatch else '<div class="cl-ledger-mark match" aria-hidden="true">·</div>')
-    return ('<div class="cl-ledger">'
+    return ('<div class="cl-ledger excerpt">'
             f'<div class="cl-ledger-col document"><p class="cl-label">Document excerpt</p>{left}</div>'
             f"{mark}"
             f'<div class="cl-ledger-col account"><p class="cl-label">On file</p>{right}</div>'
