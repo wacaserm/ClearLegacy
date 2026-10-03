@@ -90,7 +90,7 @@ def render_analyze_button(client_id, documents, extraction_errors, backend, proc
         elif processing:
             hint = "Analysis is already in progress."
         else:
-            hint = "Bedrock is called only when you click Analyze. Results stay for this session."
+            hint = "The AI runs only when you click Analyze. Your decisions are saved to the review history."
         render(f'<p class="cl-small" style="margin:0">{esc(hint)}</p>')
     with button_column:
         return compat.button("Analyze", key=f"analyze_{client_id}", stretch=True, type="primary", disabled=not enabled)

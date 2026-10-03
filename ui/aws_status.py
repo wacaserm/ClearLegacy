@@ -82,8 +82,11 @@ def render_system_details(analysis=None):
     backends = [f"Storage: {storage}", f"OCR: {'Amazon Textract' if settings['textract'] else 'off'}",
                 f"Documents: {'Amazon S3 (encrypted)' if settings['s3'] else 'local only'}",
                 f"PII masking: {'Amazon Comprehend' if settings['piiMasking'] else 'off'}"]
+    saved = ("Decisions: saved to the DynamoDB audit log (append-only)" if settings["storage"] == "dynamodb"
+             else "Decisions: saved on this computer only (local mode, data/runtime)")
     rows = ['<p class="cl-label">System details</p>',
-            f'<p class="cl-small">{esc(" · ".join(backends))}</p>']
+            f'<p class="cl-small">{esc(" · ".join(backends))}</p>',
+            f'<p class="cl-small">{esc(saved)}</p>']
     parts = usage_parts(analysis)
     if parts:
         rows.append('<p class="cl-small" style="margin-top:8px"><b>Last analysis</b> · ' + esc(" · ".join(parts)) + "</p>")
