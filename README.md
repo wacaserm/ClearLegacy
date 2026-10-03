@@ -2,7 +2,7 @@
 
 **Helping advisors spot gaps between estate planning intentions and account records.**
 
-ClearLegacy helps financial advisors review a client’s estate planning documents alongside their account records. It highlights potential inconsistencies, shows the supporting evidence, and helps advisors track what needs follow-up.
+ClearLegacy helps financial advisors review a client’s estate planning documents alongside the firm's account records. It highlights potential inconsistencies, shows the supporting evidence, and helps advisors track what needs follow-up.
 
 
 ## Why ClearLegacy?
@@ -13,13 +13,28 @@ ClearLegacy helps advisors identify these differences and prepare informed conve
 
 ## Features
 
-- **Review documents together:** Upload planning documents and account records for a household review.
-- **Spot potential inconsistencies:** Identify beneficiary mismatches, missing beneficiaries, and other details that need attention.
-- **See supporting evidence:** Compare what the planning document says with what appears in the account record.
-- **Get a clear summary:** Understand the key findings and suggested follow-up questions.
+- **Review estate documents against the accounts on file:** Upload a client's will, trust, POA, or planning summary; ClearLegacy compares them with the firm's account records for that household.
+- **Spot potential inconsistencies:** Identify beneficiary mismatches, accounts not titled to the trust, deceased fiduciaries, governing-state differences, and missing beneficiaries.
+- **See supporting evidence:** Each finding shows the highlighted document excerpt next to the account record it conflicts with.
+- **Wrong-client safety check:** If a document names a different client, or an account on file for another household, the analysis stops before any comparison and nothing is saved to the household.
+- **Track review decisions:** Confirm, dismiss (with a reason), or flag findings for attorney review. The reviewer's name is recorded with every decision in an append-only review history.
+- **Next steps and printable summaries:** Decisions are organized into a client follow-up list, an attorney review list, documented dismissals, and items still to review, with downloadable summaries for each meeting.
+- **Identify missing information:** Get clarifying questions when the documents do not provide enough detail.
 - **Ask follow-up questions:** Explore the supplied documents through answers linked to their sources.
-- **Track review decisions:** Confirm, dismiss, or flag findings for attorney review, with notes and review history.
-- **Identify missing information:** Get clarification questions when the documents do not provide enough detail.
+
+## How it works
+
+![ClearLegacy system architecture](docs/architecture.svg)
+
+1. **Upload.** The advisor picks the client household and uploads the client's estate documents (will, trust, power of attorney, planning summary). The household's accounts and beneficiaries come from the firm's account records on file (`data/clients.json`, or DynamoDB in AWS mode), not from uploads. With S3 turned on, each upload is stored as an encrypted copy. Scanned pages are read with Amazon Textract.
+2. **Extract.** When the advisor clicks **Analyze**, the pipeline sends the document text to Amazon Bedrock. Claude Sonnet 5 extracts the facts that matter (beneficiaries, executors, trust accounts, governing state, the client's name), each with its exact quote and page. Any fact whose quote can't be found in the document is discarded, so the AI can't invent evidence.
+3. **Check the client.** Before any comparison, ClearLegacy checks that each document belongs to the selected household. If a document names a different client, or refers to an account on file for another household, the analysis stops with "Stopped: client mismatch": no findings, no questions, nothing saved for the household, and the S3 copy is removed. One event is recorded in the review history.
+4. **Compare.** Deterministic Python rules compare the facts with the accounts on file. They flag mismatches such as a TOD beneficiary who isn't in the will, an account the trust says it holds that's still in the client's own name, a deceased POA agent, or a will governed by another state's law. When information is missing, they ask clarifying questions instead of guessing.
+5. **Review.** Claude Haiku 4.5 explains each finding in plain English, and every finding shows the evidence side by side. The advisor enters their name once, then chooses **Confirm**, **Dismiss** (with a reason), or **Flag for attorney** for each finding, and can ask follow-up questions that get answers with cited sources.
+6. **Record.** With PII masking on, findings and decision notes pass through Amazon Comprehend, which masks SSNs, account and card numbers, phone numbers and emails before they are stored. Decisions are saved to an append-only audit log (DynamoDB in AWS mode) that can't be altered afterwards.
+7. **Follow up.** The **Next steps** tab lists confirmed items and clarifying questions for the client, flagged items for the client's attorney, and documented dismissals, with printable summaries for each. ClearLegacy never contacts anyone, changes an account, or gives legal advice; the advisor stays in control.
+
+The same pipeline can also be deployed as a private API on AWS Lambda (IAM-authenticated, least-privilege role) so it can plug into other advisor systems later.
 
 > ClearLegacy supports advisor and attorney review. It does not provide legal advice.
 
@@ -91,24 +106,32 @@ Keep the terminal running while using the app. To stop it, press **Ctrl+C**.
 ### Using the app
 
 1. Choose a household in the sidebar (Jordan Morgan, Sam Patel, or Robin Rivera).
-2. Upload that household's planning summary and account records from
-   `sample_data/` (PDF or DOCX; upload one format of each, not both).
-3. Click **Analyze**. Bedrock is only called when you click, and the result is
-   kept for the session (about 30 seconds per household; the steps show live).
-4. Review each finding's evidence ledger (what the document says next to what the
-   account record says), then **Confirm**, **Dismiss**, or **Flag for attorney**
-   with an optional note.
-5. Use the **Ask ClearLegacy** tab for follow-up questions (try a starter
+   Its accounts on file are shown straight away; they come from the firm's
+   records, not from uploads.
+2. Upload that household's estate documents from `sample_data/` (PDF or DOCX;
+   upload one format of each document, not both, or questions will repeat).
+3. Click **Analyze**. The AI runs only when you click, and the result is kept for
+   the session (about 30 seconds per household; the steps show live).
+4. Enter your name in **Reviewer** (required). For each finding, compare the
+   highlighted document excerpt with the account record, then **Confirm**,
+   **Dismiss** (a short reason is required), or **Flag for attorney**.
+5. Open **Next steps** for the client follow-up list, the attorney list, and
+   documented dismissals, and download the printable summaries.
+6. Use the **Ask ClearLegacy** tab for follow-up questions (try a starter
    question). Answers cite their sources and are read-only.
 
 Expected results:
 
 | Household | Upload | Expected result |
 |---|---|---|
-| Jordan Morgan | `01_morgan_discrepancies`: planning summary + account records | 2 findings: IRA primary beneficiary mismatch, and missing contingent beneficiaries |
-| Jordan Morgan (estate) | `04_morgan_estate`: will, trust, and POA summaries as planning documents, plus `01_morgan_discrepancies/account_records.pdf` as the account record | 4 findings: brokerage TOD differs from the will, brokerage not titled to the trust, deceased POA agent (Pat Morgan), and will governed by FL while the client lives in GA |
-| Sam Patel | `02_patel_consistent` | No discrepancies |
-| Robin Rivera | `03_rivera_ambiguous` | Needs more information (clarifying questions) |
+| Jordan Morgan | `01_morgan_discrepancies/planning_summary.pdf` | 2 findings: IRA primary beneficiary mismatch, and missing contingent beneficiaries |
+| Jordan Morgan (estate) | `04_morgan_estate`: will, trust, and POA summaries | 4 findings (1 critical, 2 high, 1 review): brokerage TOD differs from the will, brokerage not titled to the trust, deceased POA agent (Pat Morgan), and will governed by FL while the client lives in GA |
+| Sam Patel | `02_patel_consistent/planning_summary.pdf` | No discrepancies |
+| Robin Rivera | `03_rivera_ambiguous/planning_summary.pdf` | Needs more information (clarifying questions) |
+| Jordan Morgan (wrong client) | `02_patel_consistent/planning_summary.pdf` | Stopped: client mismatch (no findings; one review-history event) |
+
+The `account_records` files in `sample_data/` are printouts of the records on
+file. They are not needed for analysis.
 
 To show OCR, upload `tests/fixtures/scanned/morgan_planning_summary_scanned.pdf`
 (an image-only scan) as Morgan's planning summary. The results are the same.
@@ -139,8 +162,9 @@ python scripts/check_setup.py
 python -m streamlit run app.py
 ```
 
-On macOS or Linux use `export NAME="value"`. The app header shows which backends
-are active, plus a "PII masking on" badge.
+On macOS or Linux use `export NAME="value"`. Turn on **Show system details** in
+the sidebar to see which backends are active and where decisions are saved; the
+sidebar shows "Personal information protected" when PII masking is on.
 
 **Each workshop AWS account needs its own resources.** The bucket, tables, and
 Lambda are created inside whichever account your credentials belong to. If
@@ -166,12 +190,13 @@ denied call.
 
 ```bash
 python infra/deploy_lambda.py    # least-privilege role + function + Function URL (IAM auth)
-python infra/invoke_lambda.py morgan sample_data/01_morgan_discrepancies/planning_summary.pdf sample_data/01_morgan_discrepancies/account_records.pdf
+python infra/invoke_lambda.py morgan sample_data/01_morgan_discrepancies/planning_summary.pdf
 ```
 
 The URL rejects unsigned requests; `invoke_lambda.py` signs with your
 credentials. It uses a Function URL rather than API Gateway because HTTP APIs
-time out at 30 seconds and an analysis takes about 25 seconds.
+time out at 30 seconds and an analysis takes about 25 seconds. Rerun
+`deploy_lambda.py` after pipeline changes so the function runs the current code.
 
 ### Cost and cleanup
 
@@ -200,7 +225,7 @@ Only services verified live on Oct 2, 2026, in the workshop account (us-east-1):
 | **Amazon S3** | Encrypted (SSE-S3), private, versioned storage of uploaded documents | Uploads stored under `clients/<clientId>/` with `ServerSideEncryption: AES256`; public access block and versioning confirmed |
 | **Amazon DynamoDB** (on-demand) | Clients, accounts, findings, decisions, append-only audit log | Records identical to the JSON store; an attempt to overwrite an audit entry was refused by DynamoDB |
 | **Amazon Comprehend** | PII masking of stored notes, findings and logs | A stored decision note was saved with `[PHONE]`, `[SSN]`, `[EMAIL]` in place of the values; names and account IDs were kept |
-| **AWS Lambda** (Function URL, IAM auth) | Runs the full analysis pipeline as a private API | A signed request returned the correct Morgan and Patel results; an unsigned request got HTTP 403 |
+| **AWS Lambda** (Function URL, IAM auth) | Runs the full analysis pipeline as a private API | A signed request returned the correct Morgan and Patel results; an unsigned request got HTTP 403. Redeployed Oct 3: Patel's summary sent for Morgan returned `client_mismatch` and its S3 copy was removed |
 | **AWS IAM / STS** | Least-privilege Lambda role; temporary workshop credentials | Role created by `deploy_lambda.py`; identity checked by `check_setup.py` |
 
 Not used: API Gateway (30-second limit), Step Functions, and any always-on
@@ -248,7 +273,7 @@ workshop credentials and restart Streamlit from the same terminal.
 
 ## Project guide
 
-See [the ClearLegacy project guide](docs/PROJECT_GUIDE.md)
+See [the ClearLegacy project guide](PROJECT_GUIDE.md)
 for scope, architecture, team responsibilities, and demo expectations.
 
 ### Troubleshooting
