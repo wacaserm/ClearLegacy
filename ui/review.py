@@ -24,32 +24,56 @@ def decision_label(decision):
     return DECISION_LABELS.get(decision, (str(decision or "Not provided").replace("_", " ").capitalize(), "neutral"))
 
 
+REVIEWER_KEY = "clearlegacy_reviewer"
+MIN_DISMISS_WORDS = 3
+
+
+def current_reviewer() -> str:
+    return " ".join(str(st.session_state.get(REVIEWER_KEY, "")).split())
+
+
+def valid_reviewer(name) -> bool:
+    return len("".join(str(name or "").split())) >= 2
+
+
+def render_reviewer_field():
+    """One reviewer name for the session; required for every decision."""
+    st.text_input("Reviewer", key=REVIEWER_KEY, placeholder="Your name",
+                  help="Required. Your name is recorded with every decision in the review history.")
+
+
 def render_finding_actions(client_id, analysis_id, finding_id, existing_decision, sample):
     key = f"{client_id}:{analysis_id}:{finding_id}"
+    reviewer = current_reviewer()
     if sample:
         render('<p class="cl-small">Sample result · decisions are kept for this session only.</p>')
-    note_column, reviewer_column = st.columns([3, 1])
-    with note_column:
-        note = st.text_area(
-            "Note (optional)", key=f"review_note_{key}", height=68,
-            placeholder="Agreed follow-up, or reason for dismissal",
-        )
-    with reviewer_column:
-        reviewer = st.text_input("Reviewer (optional)", key=f"reviewer_{key}", placeholder="Name")
-    event = None
+    note = st.text_area(
+        "Note", key=f"review_note_{key}", height=68,
+        placeholder="Optional for Confirm and Flag. For Dismiss: why isn't this an issue? "
+                    "e.g. 'Account intended for different heirs'",
+    )
+    ready = valid_reviewer(reviewer)
+    event, error = None, None
     columns = st.columns([1, 1, 1.6, 1.2])
     for column, (label, decision) in zip(columns, DECISIONS):
         with column:
-            if compat.button(label, key=f"action_{decision}_{key}", stretch=True,
+            if compat.button(label, key=f"action_{decision}_{key}", stretch=True, disabled=not ready,
                              type="primary" if decision == "confirmed" else "secondary"):
-                event = {
-                    "analysis_id": analysis_id,
-                    "finding_id": finding_id,
-                    "decision": decision,
-                    "note": note.strip(),
-                    "reviewer": reviewer.strip() or "Not provided",
-                    "sample": sample,
-                }
+                if decision == "dismissed" and len(note.split()) < MIN_DISMISS_WORDS:
+                    error = "Add a short reason before dismissing, e.g. 'Account intended for different heirs'."
+                else:
+                    event = {
+                        "analysis_id": analysis_id,
+                        "finding_id": finding_id,
+                        "decision": decision,
+                        "note": note.strip(),
+                        "reviewer": reviewer,
+                        "sample": sample,
+                    }
+    if not ready:
+        render('<div class="cl-notice warn" style="margin-top:4px">Enter your name to record this decision.</div>')
+    if error:
+        render(f'<div class="cl-notice error" style="margin-top:4px">{esc(error)}</div>')
     render('<p class="cl-small" style="margin:4px 0 0">Attorney review is an internal flag; nothing is sent externally.</p>')
     return event
 

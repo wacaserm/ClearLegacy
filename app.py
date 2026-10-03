@@ -7,7 +7,8 @@ from ui.empty_states import render_analysis_state
 from ui.assistant import render_assistant
 from ui.findings import render_findings
 from ui.household import render_account_details, render_household
-from ui.review import render_history
+from ui.next_steps import render_next_steps
+from ui.review import current_reviewer, render_history
 from ui.sidebar import render_sidebar
 from ui.state import (
     begin_analysis,
@@ -185,7 +186,8 @@ if analyze_clicked:
     st.rerun()
 
 render('<div style="height:16px"></div>')
-findings_tab, ask_tab, history_tab = st.tabs(["Findings", "Ask ClearLegacy", "Review history"])
+persistent_history, history_error = gui_adapter.get_audit(selected_client_id, backend)
+findings_tab, next_tab, ask_tab, history_tab = st.tabs(["Findings", "Next steps", "Ask ClearLegacy", "Review history"])
 review_event = None
 with findings_tab:
     current_analysis = get_current_analysis(selected_client_id)
@@ -214,6 +216,13 @@ with findings_tab:
             accounts=accounts,
         )
 
+with next_tab:
+    next_analysis = get_current_analysis(selected_client_id)
+    next_source = (workspace["analyses"][workspace["current_analysis_id"]]["source"]
+                   if next_analysis is not None else None)
+    render_next_steps(client.get("name"), next_analysis, workspace, persistent_history, current_reviewer(),
+                      sample=next_source == "sample")
+
 with ask_tab:
     current_analysis = get_current_analysis(selected_client_id)
     analysis_source = (
@@ -223,7 +232,6 @@ with ask_tab:
     render_assistant(selected_client_id, client, accounts, current_analysis, workspace, analysis_source)
 
 with history_tab:
-    persistent_history, history_error = gui_adapter.get_audit(selected_client_id, backend)
     render_history(workspace["history"], persistent_history, history_error)
 
 if review_event:
@@ -239,6 +247,8 @@ if review_event:
             review_event["note"],
             backend,
         )
+    # Move to the next open item (critical first) after a decision is recorded.
+    st.session_state.pop(f"clearlegacy_selected_{review_event['analysis_id']}", None)
     save_decision(
         selected_client_id,
         review_event["analysis_id"],

@@ -51,11 +51,13 @@ def _workspace(status="not_analyzed", result=None, source="live", decisions=None
     return ws
 
 
-def _run(selected="morgan", show_details=False, **workspace_kwargs):
+def _run(selected="morgan", show_details=False, reviewer=None, **workspace_kwargs):
     at = AppTest.from_file(APP, default_timeout=60)
     at.session_state["clearlegacy_ui"] = {"selected_client_id": selected,
                                           "workspaces": {selected: _workspace(**workspace_kwargs)}}
     at.session_state["clearlegacy_show_system_details"] = show_details
+    if reviewer is not None:
+        at.session_state["clearlegacy_reviewer"] = reviewer
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     return at
@@ -69,7 +71,7 @@ def _html(at):
 def test_empty_state_each_household(household):
     at = _run(selected=household)
     assert "No analysis yet" in _html(at)
-    assert [t.label for t in at.tabs] == ["Findings", "Ask ClearLegacy", "Review history"]
+    assert [t.label for t in at.tabs] == ["Findings", "Next steps", "Ask ClearLegacy", "Review history"]
 
 
 def test_live_result_master_detail_comparison_and_details():
@@ -173,3 +175,106 @@ def test_privacy_label_replaces_pii_badge(monkeypatch):
     monkeypatch.setenv("CLEARLEGACY_PII_MASKING", "1")
     html = _html(_run())
     assert "Personal information protected" in html and "PII masking on" not in html
+
+
+
+# --------------------------------------------------------------------------- decisions and next steps
+
+def _action(at, decision):
+    return next(b for b in at.button if b.key and b.key.startswith(f"action_{decision}_"))
+
+
+def _next_steps_sections(at):
+    """Text of each Next steps section, keyed by heading."""
+    html = _html(at)
+    heads = ["Follow up with the client", "For the client's attorney", "Dismissed (documented)", "Still to review"]
+    out = {}
+    for i, head in enumerate(heads):
+        start = html.find(head)
+        end = html.find(heads[i + 1]) if i + 1 < len(heads) else len(html)
+        out[head] = html[start:end] if start >= 0 else ""
+    return out
+
+
+def test_decisions_blocked_without_reviewer(tmp_path, monkeypatch):
+    at = _run(status="review_needed", result=copy.deepcopy(LIVE))
+    assert all(_action(at, d).disabled for d in ("confirmed", "dismissed", "attorney_review"))
+    assert "Enter your name to record this decision." in _html(at)
+    at = _run(status="review_needed", result=copy.deepcopy(LIVE), reviewer="A")  # one character is not enough
+    assert _action(at, "confirmed").disabled
+
+
+def test_dismiss_requires_a_reason(tmp_path, monkeypatch):
+    import core.store as store
+    monkeypatch.setattr(store, "RUNTIME_DIR", tmp_path)
+    at = _run(status="review_needed", result=copy.deepcopy(LIVE), reviewer="Alex Advisor")
+    _action(at, "dismissed").click().run()
+    assert not at.exception
+    assert "Add a short reason before dismissing" in _html(at)
+    assert at.session_state["clearlegacy_ui"]["workspaces"]["morgan"]["decisions"] == {}
+
+
+def test_decisions_move_items_between_next_steps_lists(tmp_path, monkeypatch):
+    import core.store as store
+    monkeypatch.setattr(store, "RUNTIME_DIR", tmp_path)
+    at = _run(status="review_needed", result=copy.deepcopy(LIVE), reviewer="Alex Advisor")
+    # Default selection is the critical finding ("TOD differs ..."): flag it for the attorney.
+    _action(at, "attorney_review").click().run()
+    sections = _next_steps_sections(at)
+    assert "TOD differs" in sections["For the client's attorney"]
+    assert "Alex Advisor" in sections["For the client's attorney"]
+    # Dismiss the selected next item (the high POA finding) with a reason.
+    note = next(t for t in at.text_area if t.key and t.key.startswith("review_note_") and "F-high" in t.key)
+    note.input("Agent replaced by a new POA last year").run()
+    _action(at, "dismissed").click().run()
+    sections = _next_steps_sections(at)
+    assert "POA agent marked deceased" in sections["Dismissed (documented)"]
+    assert "Agent replaced by a new POA last year" in sections["Dismissed (documented)"]
+    # Confirm the remaining review finding.
+    _action(at, "confirmed").click().run()
+    sections = _next_steps_sections(at)
+    assert "governed by FL" in sections["Follow up with the client"]
+    assert "Every item has a decision." in sections["Still to review"]
+    ws = at.session_state["clearlegacy_ui"]["workspaces"]["morgan"]
+    assert len(ws["decisions"]) == 3 and all(d["reviewer"] == "Alex Advisor" for d in ws["decisions"].values())
+    # Review history shows the reviewer.
+    assert _html(at).count("Alex Advisor") >= 3
+
+
+def test_change_decision_moves_item_back(tmp_path, monkeypatch):
+    import core.store as store
+    monkeypatch.setattr(store, "RUNTIME_DIR", tmp_path)
+    at = _run(status="review_needed", result=copy.deepcopy(LIVE), reviewer="Alex Advisor")
+    _action(at, "attorney_review").click().run()  # flag the critical finding
+    critical = next(b for b in at.button if b.key and b.key.startswith("pick") and "**Critical**" in b.label)
+    critical.click().run()
+    assert "Flagged" in next(b for b in at.button if b.key and b.key.startswith("pick") and "**Critical**" in b.label).label
+    _action(at, "confirmed").click().run()  # Change decision -> Confirm
+    sections = _next_steps_sections(at)
+    assert "TOD differs" in sections["Follow up with the client"]
+    assert "TOD differs" not in sections["For the client's attorney"]
+
+
+def test_downloads_contain_the_right_findings_and_reviewer():
+    from ui.next_steps import FOOTER, build_summary_html
+    flagged = LIVE["findings"][1]
+    confirmed = LIVE["findings"][0]
+    decision = {"decision": "attorney_review", "note": "Call <b>attorney</b>", "reviewer": "Alex Advisor",
+                "timestamp": "2026-10-03T07:00"}
+    groups = {"attorney_review": [(flagged, decision)],
+              "confirmed": [(confirmed, decision | {"decision": "confirmed"})], "dismissed": [], "open": []}
+    attorney = build_summary_html("attorney", "Jordan Morgan", LIVE, groups, "Alex Advisor")
+    client = build_summary_html("client", "Jordan Morgan", LIVE, groups, "Alex Advisor")
+    assert "Prepared by ClearLegacy for review with the client&#x27;s attorney" in attorney
+    assert "TOD differs" in attorney and "governed by FL" not in attorney
+    assert "morgan_will_summary.pdf" in attorney and "Avery Morgan" in attorney
+    assert "Alex Advisor" in attorney and "Alex Advisor" in client
+    assert "governed by FL" in client and "Confirm with the client." in client
+    assert FOOTER in attorney and FOOTER in client
+    assert XSS not in attorney and "&lt;script&gt;" in attorney and "<b>attorney</b>" not in attorney
+
+
+def test_download_buttons_render_on_next_steps(tmp_path, monkeypatch):
+    at = _run(status="review_needed", result=copy.deepcopy(LIVE), reviewer="Alex Advisor")
+    labels = [e.proto.label for e in at.get("download_button")]
+    assert "Download attorney review summary" in labels and "Download client follow-up list" in labels

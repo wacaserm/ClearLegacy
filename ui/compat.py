@@ -27,3 +27,14 @@ def button(label, key, stretch=False, **kwargs):
         except TypeError:
             return st.button(label, key=key, use_container_width=True, **kwargs)
     return st.button(label, key=key, **kwargs)
+
+
+def download_button(label, data, file_name, mime, key, stretch=False, **kwargs):
+    """st.download_button with full width on old and new Streamlit versions."""
+    if stretch:
+        try:
+            return st.download_button(label, data=data, file_name=file_name, mime=mime, key=key, width="stretch", **kwargs)
+        except TypeError:
+            return st.download_button(label, data=data, file_name=file_name, mime=mime, key=key,
+                                      use_container_width=True, **kwargs)
+    return st.download_button(label, data=data, file_name=file_name, mime=mime, key=key, **kwargs)
