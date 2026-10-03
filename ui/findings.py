@@ -10,7 +10,7 @@ from ui import compat
 from ui.aws_status import advisor_message, remember_technical
 from ui.excerpt import find_context, highlight_html, short_title
 from ui.overview import render_overview
-from ui.review import decision_label, render_finding_actions
+from ui.review import decision_label, render_finding_actions, render_reviewer_field
 
 _MD_SPECIAL = re.compile(r"([\\`*_\[\]<>#|~])")
 
@@ -218,7 +218,11 @@ def render_findings(client_id, analysis, workspace, sample=False, client_name=No
             st.session_state[select_key] = default_selection(findings, decisions, analysis_id)
         selected = st.session_state[select_key]
 
-        render('<p class="cl-section" style="margin-top:24px">Items to review</p>')
+        title_column, reviewer_column = st.columns([2, 1], vertical_alignment="bottom")
+        with title_column:
+            render('<p class="cl-section" style="margin-top:24px">Items to review</p>')
+        with reviewer_column:
+            render_reviewer_field()
         list_column, detail_column = st.columns([1, 2.3], gap="large")
         with list_column:
             for position, (index, finding) in enumerate(findings):
