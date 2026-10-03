@@ -51,7 +51,7 @@ def render_uploads(client_id, backend):
                 preview = by_name.get(document["filename"])
                 tags = []
                 if preview and preview.get("ocrPages"):
-                    tags.append('<span class="cl-tag" title="Read with Amazon Textract OCR">OCR</span>')
+                    tags.append('<span class="cl-tag" title="Text recognized from a scanned page">Scanned: text recognized</span>')
                 if document["filename"] in error_names:
                     tags.append('<span class="cl-pill critical">Could not read</span>')
                 elif preview and preview.get("status") not in (None, "ok"):

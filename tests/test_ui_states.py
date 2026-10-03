@@ -51,10 +51,11 @@ def _workspace(status="not_analyzed", result=None, source="live", decisions=None
     return ws
 
 
-def _run(selected="morgan", **workspace_kwargs):
+def _run(selected="morgan", show_details=False, **workspace_kwargs):
     at = AppTest.from_file(APP, default_timeout=60)
     at.session_state["clearlegacy_ui"] = {"selected_client_id": selected,
                                           "workspaces": {selected: _workspace(**workspace_kwargs)}}
+    at.session_state["clearlegacy_show_system_details"] = show_details
     at.run()
     assert not at.exception, [e.value for e in at.exception]
     return at
@@ -74,7 +75,7 @@ def test_empty_state_each_household(household):
 def test_live_result_renders_sorted_findings_ledger_and_footer():
     decided = {"analysis-test:F-high": {"analysisId": "analysis-test", "findingId": "F-high", "decision": "confirmed",
                                         "note": "Spoke with client", "reviewer": "Advisor", "timestamp": "2026-10-02T20:00"}}
-    at = _run(status="review_needed", result=copy.deepcopy(LIVE), decisions=decided)
+    at = _run(status="review_needed", result=copy.deepcopy(LIVE), decisions=decided, show_details=True)
     html = _html(at)
     assert html.index("TOD differs") < html.index("POA agent") < html.index("governed by FL")  # critical, high, review
     assert "Document says" in html and "Account record says" in html and "≠" in html
@@ -117,3 +118,26 @@ def test_quotes_with_line_breaks_render_as_one_block():
                          "quote": "The\nresiduary\n\nbeneficiary   is\n\nCasey"},
                         {"sourceType": "account", "sourceId": "A", "field": "state", "value": "GA"}])
     assert "The residuary beneficiary is Casey" in html and "\n" not in html.split('role="note">')[1].split("</div>")[0]
+
+
+def test_system_details_hidden_by_default_and_shown_with_toggle():
+    hidden = _html(_run(status="review_needed", result=copy.deepcopy(LIVE)))
+    assert "System details" not in hidden and "Est. cost" not in hidden and "Storage:" not in hidden
+    shown = _html(_run(status="review_needed", result=copy.deepcopy(LIVE), show_details=True))
+    assert "System details" in shown and "Storage:" in shown and "Est. cost" in shown
+
+
+def test_aws_fallback_warnings_use_advisor_wording():
+    result = copy.deepcopy(LIVE) | {"warnings": ["DynamoDB unavailable; using local JSON storage (AccessDenied)."]}
+    hidden = _html(_run(status="review_needed", result=result))
+    import html as html_lib
+    assert "Working offline: decisions aren't being saved to the firm record." in html_lib.unescape(hidden)
+    assert "AccessDenied" not in hidden  # technical detail only in System details
+    shown = _html(_run(status="review_needed", result=result, show_details=True))
+    assert "AccessDenied" in shown
+
+
+def test_privacy_label_replaces_pii_badge(monkeypatch):
+    monkeypatch.setenv("CLEARLEGACY_PII_MASKING", "1")
+    html = _html(_run())
+    assert "Personal information protected" in html and "PII masking on" not in html

@@ -26,7 +26,7 @@ from ui.state import (
 )
 from ui.theme import apply_theme
 from ui.uploads import render_analyze_button, render_uploads
-from ui.aws_status import render_aws_warnings
+from ui.aws_status import render_aws_warnings, render_system_details
 from ui.html import esc, render
 
 
@@ -260,6 +260,8 @@ if review_event:
             f"{workspace['notice']} Attorney review is an internal flag; nothing is sent externally.",
         )
     st.rerun()
+
+render_system_details(get_current_analysis(selected_client_id))
 
 render('<p class="cl-small" style="margin-top:32px">Findings support advisor review and are not legal advice. '
        "Attorney review is an internal flag; nothing is sent externally.</p>")
