@@ -3,13 +3,14 @@ import streamlit as st
 from services import gui_adapter
 from ui import compat
 from ui.html import DOC_TYPE_LABELS, esc, render
+from ui.state import upload_key
 
 
 def _type_label(document, preview):
     doc_type = (preview or {}).get("docType")
     if doc_type in DOC_TYPE_LABELS:
         return DOC_TYPE_LABELS[doc_type]
-    return "Account records" if document["category"] == "account" else "Planning document"
+    return "Planning document"
 
 
 def render_uploads(client_id, backend):
@@ -19,27 +20,16 @@ def render_uploads(client_id, backend):
     card = st.container(border=True, key=f"docs_card_{client_id}")
     with card:
         render('<p class="cl-section">Documents</p>'
-               '<p class="cl-muted" style="margin:-4px 0 12px">Upload the client\'s planning documents and the account '
-               'records to compare. Several planning documents can be uploaded together.</p>')
-        planning_column, account_column = st.columns(2, gap="medium")
-        with planning_column:
-            render('<p class="cl-label">Planning documents · will, trust, POA, summary</p>')
-            planning_files = st.file_uploader(
-                "Planning documents", type=file_types, accept_multiple_files=True,
-                key=f"planning_uploads_{client_id}", label_visibility="collapsed",
-            )
-        with account_column:
-            render('<p class="cl-label">Account records</p>')
-            account_files = st.file_uploader(
-                "Account records", type=file_types, accept_multiple_files=True,
-                key=f"account_uploads_{client_id}", label_visibility="collapsed",
-            )
+               '<p class="cl-muted" style="margin:-4px 0 12px">Upload the client\'s estate documents. They are compared '
+               'with the accounts on file. Several documents can be uploaded together.</p>')
+        render('<p class="cl-label">Estate documents · will, trust, POA, planning summary</p>')
+        planning_files = st.file_uploader(
+            "Estate documents", type=file_types, accept_multiple_files=True,
+            key=upload_key(client_id), label_visibility="collapsed",
+        )
 
-        documents = []
-        for file in planning_files or []:
-            documents.append({"filename": file.name, "file_bytes": file.getvalue(), "category": "planning"})
-        for file in account_files or []:
-            documents.append({"filename": file.name, "file_bytes": file.getvalue(), "category": "account"})
+        documents = [{"filename": file.name, "file_bytes": file.getvalue(), "category": "planning"}
+                     for file in planning_files or []]
 
         previews, extraction_errors = gui_adapter.preview_documents(documents, backend)
         by_name = {preview.get("filename"): preview for preview in previews}

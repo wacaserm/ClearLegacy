@@ -11,6 +11,7 @@ from ui.aws_status import advisor_message, remember_technical
 from ui.excerpt import find_context, highlight_html, short_title
 from ui.overview import render_overview
 from ui.review import decision_label, render_finding_actions, render_reviewer_field
+from ui.state import clear_uploads
 
 _MD_SPECIAL = re.compile(r"([\\`*_\[\]<>#|~])")
 
@@ -105,7 +106,7 @@ def _tiles(findings, questions, decided):
 
 
 _STATUS_NOTICE = {
-    "no_discrepancies_found": ("ok", "No discrepancies found within the supplied documents and account records."),
+    "no_discrepancies_found": ("ok", "No discrepancies found between the supplied documents and the accounts on file."),
     "needs_information": ("warn", "More information is needed to complete this review. See the questions below."),
     "review_needed": ("", "Review each finding with the client, then record a decision."),
 }
@@ -172,8 +173,30 @@ def _header(client_name, findings, questions, decided):
 PRIORITY_LABELS_PLURAL = {"critical": "Critical", "high": "High", "review": "Review"}
 
 
+def render_client_mismatch(client_id, analysis):
+    """Wrong-client stop: one prominent block, nothing else from the run."""
+    lines = []
+    for item in analysis.get("clientMismatch") or []:
+        file_name, expected = esc(item.get("fileName", "A document")), esc(item.get("expectedName", "this household"))
+        if item.get("accountRefs"):
+            found = f'refers to {esc(", ".join(item["accountRefs"]))}, an account on file for another household'
+        else:
+            found = f"names <b>{esc(item.get('nameFound', 'another client'))}</b>"
+        lines.append(f"<p style=\"margin:6px 0 0\"><b>{file_name}</b> {found}, but this household is <b>{expected}</b>.</p>")
+    render('<div class="cl-notice error" role="alert" style="border-width:2px">'
+           '<p style="margin:0;font-weight:700">&#9888; Stopped: wrong client?</p>' + "".join(lines)
+           + '<p style="margin:8px 0 0">Remove the document and upload the correct client\'s files. No findings or '
+           "questions were produced, and nothing from these documents was saved to this household.</p></div>")
+    if compat.button("Remove these documents", key=f"remove_mismatch_{client_id}", type="primary"):
+        clear_uploads(client_id)
+        st.rerun()
+
+
 def render_findings(client_id, analysis, workspace, sample=False, client_name=None, accounts=None):
     if not analysis:
+        return None
+    if analysis.get("status") == "client_mismatch":
+        render_client_mismatch(client_id, analysis)
         return None
     findings = sorted(
         enumerate(analysis.get("findings", []) or []),

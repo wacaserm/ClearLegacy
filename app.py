@@ -8,7 +8,7 @@ from ui.assistant import render_assistant
 from ui.findings import render_findings
 from ui.household import render_account_details, render_household
 from ui.next_steps import render_next_steps
-from ui.review import current_reviewer, render_history
+from ui.review import current_reviewer, render_history, valid_reviewer
 from ui.sidebar import render_sidebar
 from ui.state import (
     begin_analysis,
@@ -19,6 +19,7 @@ from ui.state import (
     get_workspace,
     initialize_state,
     load_sample_analysis,
+    record_event,
     pop_notice,
     save_decision,
     select_household,
@@ -158,6 +159,7 @@ if analyze_clicked:
             "review_needed",
             "no_discrepancies_found",
             "needs_information",
+            "client_mismatch",
             "failed",
         }
         if result.get("status") not in allowed_statuses:
@@ -175,12 +177,21 @@ if analyze_clicked:
             result.setdefault("warnings", [])
             result.setdefault("analysisId", None)
             result["elapsedSeconds"] = time.monotonic() - started
-            complete_analysis(
+            analysis_id = complete_analysis(
                 selected_client_id,
                 result,
                 "live",
                 upload_fingerprint,
             )
+            if result["status"] == "client_mismatch":
+                # One audit event for the wrong-client stop (audit record shape unchanged).
+                reviewer = current_reviewer() if valid_reviewer(current_reviewer()) else "system"
+                first = (result.get("clientMismatch") or [{}])[0]
+                note = (f"Analysis stopped: {first.get('fileName', 'a document')} appears to belong to another "
+                        f"client ({first.get('nameFound', 'unknown')}).")
+                persistence = gui_adapter.persist_decision(
+                    selected_client_id, analysis_id, "client-check", "analysis_stopped", reviewer, note, backend)
+                record_event(selected_client_id, analysis_id, "analysis_stopped", note, reviewer, persistence)
     except Exception as error:
         fail_analysis(selected_client_id, f"Analysis failed: {error}")
     st.rerun()
@@ -229,7 +240,11 @@ with ask_tab:
         workspace["analyses"][workspace["current_analysis_id"]]["source"]
         if current_analysis is not None else None
     )
-    render_assistant(selected_client_id, client, accounts, current_analysis, workspace, analysis_source)
+    if current_analysis is not None and current_analysis.get("status") == "client_mismatch":
+        render('<div class="cl-notice error">Questions are unavailable: the last analysis was stopped because the '
+               "documents may belong to another client.</div>")
+    else:
+        render_assistant(selected_client_id, client, accounts, current_analysis, workspace, analysis_source)
 
 with history_tab:
     render_history(workspace["history"], persistent_history, history_error)

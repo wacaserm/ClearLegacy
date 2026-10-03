@@ -15,6 +15,7 @@ STATUS_PILLS = {
     "needs_information": ("Needs information", "review"),
     "no_discrepancies_found": ("No discrepancies", "clear"),
     "failed": ("Failed", "critical"),
+    "client_mismatch": ("Stopped: client mismatch", "critical"),
     "outdated": ("Outdated", "neutral"),
 }
 
