@@ -23,6 +23,7 @@ ClearLegacy helps advisors identify these differences and prepare informed conve
 - **Ask follow-up questions:** Explore the supplied documents through answers linked to their sources.
 
 ## How it works
+![ClearLegacy system architecture](docs/ClearLegacy_Demo.gif)
 
 ![ClearLegacy system architecture](docs/architecture.svg)
 
