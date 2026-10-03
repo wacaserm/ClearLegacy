@@ -42,13 +42,32 @@ button, input, textarea, select { font-family: var(--font); }
 [data-testid="stAppViewContainer"] { background: var(--bg); color: var(--text); }
 /* :where() keeps this at zero specificity so cl-* classes always win. */
 :where([data-testid="stMarkdownContainer"]) :where(p, li) { font-size: 14px; line-height: 1.55; }
-h1, h2, h3, h4 { font-family: var(--font); color: var(--text); letter-spacing: -0.01em; }
+h1, h2, h3, h4 { font-family: var(--font); font-weight: 600; color: var(--text); letter-spacing: -0.01em; }
+/* One family for the interface: Inter everywhere (Streamlit widgets set their own font, so this
+   rule is page-wide). Material icons keep their icon font. Georgia is re-applied below only for
+   document excerpts and the client name. */
+html body .stApp *:not([data-testid="stIconMaterial"]):not([class*="material-symbols"]):not([class*="material-icons"]) {
+  font-family: var(--font); }
+html body .stApp .cl-page-body, html body .stApp .cl-page-body *, html body .stApp .cl-serif {
+  font-family: Georgia, 'Times New Roman', serif !important; }
+html body .cl-title, html body .cl-section, html body .cl-finding-title { font-weight: 600; }
 html body .cl-num, html body .cl-table td.num { font-variant-numeric: tabular-nums; }
 
 /* ---- Hide Streamlit chrome ------------------------------------------------ */
-[data-testid="stHeader"], [data-testid="stToolbar"], [data-testid="stDecoration"],
-[data-testid="stMainMenu"], [data-testid="stAppDeployButton"], .stDeployButton,
-footer, #MainMenu { display: none !important; visibility: hidden !important; }
+/* The header stays in the page (Streamlit renders the sidebar's reopen button inside it),
+   but it is invisible and click-through; only the parts we don't want are removed. */
+[data-testid="stHeader"] { background: transparent !important; height: 0 !important; min-height: 0 !important;
+  box-shadow: none !important; pointer-events: none; }
+[data-testid="stDecoration"], [data-testid="stMainMenu"], [data-testid="stAppDeployButton"], .stDeployButton,
+[data-testid="stStatusWidget"], [data-testid="stToolbarActions"], footer, #MainMenu {
+  display: none !important; visibility: hidden !important; }
+[data-testid="stExpandSidebarButton"] {
+  position: fixed; top: 12px; left: 12px; z-index: 1000; pointer-events: auto;
+  background: var(--bg) !important; border: 1px solid var(--line) !important; border-radius: 8px !important;
+  width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06); }
+[data-testid="stExpandSidebarButton"]:hover { background: var(--surface) !important; }
+[data-testid="stExpandSidebarButton"]:focus-visible { outline: 2px solid var(--brand) !important; outline-offset: 2px; }
 
 /* ---- Layout --------------------------------------------------------------- */
 [data-testid="stMainBlockContainer"], .block-container {
